@@ -35,8 +35,8 @@ struct Vertex
     int width;
     int height;
     int player_loc;
-    vector<int> box_locs;    // not updated
-    vector<int> target_locs; // not updated
+    // vector<int> box_locs;    // not updated
+    // vector<int> target_locs; // not updated
 };
 
 char get_tile(const Vertex *vertex, int loc)
@@ -106,14 +106,14 @@ void load_state_from_path(Vertex *vertex, const char *path)
             {
                 vertex->player_loc = y * width + x;
             }
-            else if (c == 'x' || c == 'X')
-            {
-                vertex->box_locs.push_back(y * width + x);
-            }
-            else if (c == '.' || c == 'X' || c == 'O')
-            {
-                vertex->target_locs.push_back(y * width + x);
-            }
+            // else if (c == 'x' || c == 'X')
+            // {
+            //     vertex->box_locs.push_back(y * width + x);
+            // }
+            // else if (c == '.' || c == 'X' || c == 'O')
+            // {
+            //     vertex->target_locs.push_back(y * width + x);
+            // }
         }
 
         y++;
@@ -122,24 +122,6 @@ void load_state_from_path(Vertex *vertex, const char *path)
     vertex->height = y;
     return;
 }
-
-// Graph (Directed)
-struct Graph
-{
-    // Number of edges in the graph
-    int num_edges;
-    // Number of vertices in the graph
-    int num_nodes;
-
-    // The node reached by vertex i's first outgoing edge is given by
-    // outgoing_edges[outgoing_starts[i]].  To iterate over all
-    // outgoing edges, please see the top-down bfs implementation.
-    int *outgoing_starts;
-    Vertex *outgoing_edges;
-
-    int *incoming_starts;
-    Vertex *incoming_edges;
-};
 
 /*
     try to move at the given direction
@@ -278,7 +260,21 @@ bool is_solved(const Vertex *v)
 }
 
 /* BFS-related */
-// Function to convert the map vector to a string for hashing
+// Custom hash function for vector<char> to avoid string conversion
+struct StateHash
+{
+    size_t operator()(const vector<char> &state) const
+    {
+        size_t hash = 0;
+        for (size_t i = 0; i < state.size(); ++i)
+        {
+            hash = hash * 31 + static_cast<size_t>(state[i]);
+        }
+        return hash;
+    }
+};
+
+// Function to convert the map vector to a string for hashing (kept for path reconstruction)
 string state_to_string(const Vertex *v)
 {
     return string(v->m.begin(), v->m.end());
@@ -303,14 +299,17 @@ void solve_bfs_with_path(Vertex *start_node)
     vector<Vertex *> current_level;
     vector<Vertex *> next_level;
 
-    // Visited map now stores parent state pointer and move character
-    unordered_map<string, StateInfo> visited;
+    // Pre-allocate vectors for better performance
+    current_level.reserve(10000);
+    next_level.reserve(50000);
+
+    // Use vector<char> directly as key instead of string for better performance
+    unordered_map<vector<char>, StateInfo, StateHash> visited;
     // Keep track of all allocated vertices for cleanup
     vector<Vertex *> allocated_vertices;
 
-    std::string start_str = state_to_string(start_node);
     current_level.push_back(start_node);
-    visited[start_str] = StateInfo(nullptr, 0); // Start node has no parent
+    visited[start_node->m] = StateInfo(nullptr, 0); // Start node has no parent
 
     bool solved = false;
     Vertex *final_state = nullptr;
@@ -319,12 +318,15 @@ void solve_bfs_with_path(Vertex *start_node)
     {
         next_level.clear();
 
-// Process current level in parallel
+        // Use thread-local storage to reduce critical sections
+        vector<vector<Vertex *>> thread_local_states(omp_get_max_threads());
+        vector<vector<pair<vector<char>, StateInfo>>> thread_local_visited(omp_get_max_threads());
+
 #pragma omp parallel
         {
-            vector<Vertex *> thread_next_states; // Thread-local storage for new states
+            int thread_id = omp_get_thread_num();
 
-#pragma omp for
+#pragma omp for schedule(dynamic, 1)
             for (int i = 0; i < current_level.size(); i++)
             {
                 Vertex *current_v = current_level[i];
@@ -349,57 +351,50 @@ void solve_bfs_with_path(Vertex *start_node)
                     Vertex *next_state = try_push(current_v, move.first, move.second);
                     if (next_state)
                     {
-                        string next_state_str = state_to_string(next_state);
-
-                        bool is_new_state = false;
-#pragma omp critical
-                        {
-                            if (visited.find(next_state_str) == visited.end())
-                            {
-                                // Store the parent pointer and the move
-                                visited[next_state_str] = StateInfo(current_v, dir_str[0]);
-                                is_new_state = true;
-                            }
-                        }
-
-                        if (is_new_state)
-                        {
-                            thread_next_states.push_back(next_state);
-                        }
-                        else
-                        {
-                            delete next_state;
-                        }
+                        // Store in thread-local containers first
+                        thread_local_states[thread_id].push_back(next_state);
+                        thread_local_visited[thread_id].emplace_back(
+                            next_state->m, StateInfo(current_v, dir_str[0]));
                     }
                 }
             }
+        }
 
-// Merge thread-local results into global next_level
-#pragma omp critical
+        // Single critical section to merge all thread results
+        for (int t = 0; t < omp_get_max_threads(); t++)
+        {
+            for (int i = 0; i < thread_local_states[t].size(); i++)
             {
-                next_level.insert(next_level.end(),
-                                  thread_next_states.begin(),
-                                  thread_next_states.end());
-                allocated_vertices.insert(allocated_vertices.end(),
-                                          thread_next_states.begin(),
-                                          thread_next_states.end());
+                Vertex *state = thread_local_states[t][i];
+                const vector<char> &state_vec = thread_local_visited[t][i].first;
+
+                if (visited.find(state_vec) == visited.end())
+                {
+                    visited[state_vec] = thread_local_visited[t][i].second;
+                    next_level.push_back(state);
+                    allocated_vertices.push_back(state);
+                }
+                else
+                {
+                    delete state;
+                }
             }
         }
 
         // Move to next level
-        current_level = std::move(next_level);
+        current_level = move(next_level);
     }
 
     if (solved)
     {
         // Reconstruct path by following parent pointers
         string path = "";
-        string current_state_str = state_to_string(final_state);
+        vector<char> current_state_vec = final_state->m;
 
-        while (visited[current_state_str].parent != nullptr)
+        while (visited[current_state_vec].parent != nullptr)
         {
-            path = visited[current_state_str].move + path;
-            current_state_str = state_to_string(visited[current_state_str].parent);
+            path = visited[current_state_vec].move + path;
+            current_state_vec = visited[current_state_vec].parent->m;
         }
 
         cout << path << endl;
