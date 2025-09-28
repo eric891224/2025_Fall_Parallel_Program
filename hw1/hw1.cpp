@@ -577,9 +577,9 @@ void solve_bfs_with_path(Vertex *start_node)
 
     // Clean up allocated memory - use delete instead of free
 #pragma omp parallel for
-    for (Vertex *v : allocated_vertices)
+    for (int i = 0; i < allocated_vertices.size(); i++)
     {
-        delete v;
+        delete allocated_vertices[i];
     }
 }
 
