@@ -128,7 +128,7 @@ void load_state_from_path(Vertex *vertex, const char *path)
     return the next game state if the move is valid
     return nullptr otherwise
 */
-Vertex *try_push(const Vertex *cur_state, int dy, int dx)
+Vertex *try_push(const Vertex *cur_state, int dy, int dx, const vector<bool> &corner_deadlock_locs)
 {
     int y = get_y_from_loc(cur_state, cur_state->player_loc);
     int x = get_x_from_loc(cur_state, cur_state->player_loc);
@@ -164,6 +164,13 @@ Vertex *try_push(const Vertex *cur_state, int dy, int dx)
     {
         // Check bounds for the position behind the box
         if (yyy < 0 || yyy >= cur_state->height || xxx < 0 || xxx >= cur_state->width)
+        {
+            delete next_state;
+            return nullptr;
+        }
+
+        // check if box pushed into corner deadlock position
+        if (corner_deadlock_locs[get_loc_from_xy(cur_state, xxx, yyy)])
         {
             delete next_state;
             return nullptr;
@@ -218,33 +225,33 @@ Vertex *try_push(const Vertex *cur_state, int dy, int dx)
     return next_state;
 }
 
-void test_try_push(const Vertex *v)
-{
-    cerr << "\n--- Testing try_push ---" << endl;
-    for (auto const &[dir, move] : DYDX)
-    {
-        cerr << "Trying to move " << dir << "..." << endl;
-        Vertex *next_state = try_push(v, move.first, move.second);
-        if (next_state)
-        {
-            cerr << "Move successful. New state:" << endl;
-            for (int i = 0; i < next_state->height; ++i)
-            {
-                for (int j = 0; j < next_state->width; ++j)
-                {
-                    cerr << next_state->m[i * next_state->width + j];
-                }
-                cerr << endl;
-            }
-            delete next_state; // Clean up the allocated memory
-        }
-        else
-        {
-            cerr << "Move invalid." << endl;
-        }
-        cerr << "------------------------" << endl;
-    }
-}
+// void test_try_push(const Vertex *v)
+// {
+//     cerr << "\n--- Testing try_push ---" << endl;
+//     for (auto const &[dir, move] : DYDX)
+//     {
+//         cerr << "Trying to move " << dir << "..." << endl;
+//         Vertex *next_state = try_push(v, move.first, move.second);
+//         if (next_state)
+//         {
+//             cerr << "Move successful. New state:" << endl;
+//             for (int i = 0; i < next_state->height; ++i)
+//             {
+//                 for (int j = 0; j < next_state->width; ++j)
+//                 {
+//                     cerr << next_state->m[i * next_state->width + j];
+//                 }
+//                 cerr << endl;
+//             }
+//             delete next_state; // Clean up the allocated memory
+//         }
+//         else
+//         {
+//             cerr << "Move invalid." << endl;
+//         }
+//         cerr << "------------------------" << endl;
+//     }
+// }
 
 bool is_solved(const Vertex *v)
 {
@@ -281,26 +288,6 @@ bool is_corner_deadlock(const Vertex *state, int box_loc)
            (is_top_wall && is_right_wall) ||
            (is_bottom_wall && is_left_wall) ||
            (is_bottom_wall && is_right_wall);
-
-    // Only consider it a corner deadlock if it's against actual map boundaries
-    // and only if there are still empty targets available
-    // bool has_empty_targets = false;
-    // for (char c : state->m)
-    // {
-    //     if (c == '.')
-    //     {
-    //         has_empty_targets = true;
-    //         break;
-    //     }
-    // }
-
-    // Only trigger corner deadlock if:
-    // 1. Box is in actual corner of map boundaries (not just against obstacles)
-    // 2. There are still empty targets that need boxes
-    // return has_empty_targets && ((top_wall && left_wall) ||
-    //                              (top_wall && right_wall) ||
-    //                              (bottom_wall && left_wall) ||
-    //                              (bottom_wall && right_wall));
 }
 
 bool is_wall_deadlock(const Vertex *state, int box_loc)
@@ -408,18 +395,18 @@ bool is_deadlock_state(const Vertex *state)
     }
 
     // Check individual box deadlocks - only for boxes not on targets
-    for (int loc = 0; loc < state->m.size(); loc++)
-    {
-        char tile = state->m[loc];
-        if (tile == 'x')
-        { // Only check boxes not on targets
-            // Only use corner deadlock detection, wall deadlock is disabled for now
-            if (is_corner_deadlock(state, loc))
-            {
-                return true;
-            }
-        }
-    }
+    // for (int loc = 0; loc < state->m.size(); loc++)
+    // {
+    //     char tile = state->m[loc];
+    //     if (tile == 'x')
+    //     { // Only check boxes not on targets
+    //         // Only use corner deadlock detection, wall deadlock is disabled for now
+    //         if (is_corner_deadlock(state, loc))
+    //         {
+    //             return true;
+    //         }
+    //     }
+    // }
 
     return false;
 }
@@ -463,6 +450,18 @@ void solve_bfs_with_path(Vertex *start_node)
 {
     vector<Vertex *> current_level;
     vector<Vertex *> next_level;
+
+    vector<bool> corner_deadlock_locs(start_node->width * start_node->height, false);
+    // Precompute corner deadlock positions
+#pragma omp parallel for
+    for (int loc = 0; loc < start_node->m.size(); loc++)
+    {
+        char tile = start_node->m[loc];
+        if (tile == ' ' || tile == 'o')
+        {
+            corner_deadlock_locs[loc] = is_corner_deadlock(start_node, loc);
+        }
+    }
 
     // Pre-allocate vectors for better performance
     current_level.reserve(10000);
@@ -513,7 +512,7 @@ void solve_bfs_with_path(Vertex *start_node)
                 // Try all possible moves
                 for (auto const &[dir_str, move] : DYDX)
                 {
-                    Vertex *next_state = try_push(current_v, move.first, move.second);
+                    Vertex *next_state = try_push(current_v, move.first, move.second, corner_deadlock_locs);
                     if (next_state)
                     {
                         // Add deadlock detection to prune dead branches
@@ -554,7 +553,7 @@ void solve_bfs_with_path(Vertex *start_node)
         }
 
         // Move to next level
-        current_level = move(next_level);
+        current_level = std::move(next_level);
     }
 
     if (solved)
@@ -577,6 +576,7 @@ void solve_bfs_with_path(Vertex *start_node)
     }
 
     // Clean up allocated memory - use delete instead of free
+#pragma omp parallel for
     for (Vertex *v : allocated_vertices)
     {
         delete v;
