@@ -262,24 +262,56 @@ bool is_solved(const Vertex *v)
 // Deadlock detection functions
 bool is_corner_deadlock(const Vertex *state, int box_loc)
 {
+    // If box is on a target, it's not a deadlock
+    if (get_tile(state, box_loc) == 'X')
+    {
+        return false;
+    }
+
     int x = get_x_from_loc(state, box_loc);
     int y = get_y_from_loc(state, box_loc);
 
-    // Check if box is against two perpendicular walls/obstacles
-    bool top_blocked = (y == 0) || get_tile(state, get_loc_from_xy(state, x, y - 1)) == '#';
-    bool bottom_blocked = (y == state->height - 1) || get_tile(state, get_loc_from_xy(state, x, y + 1)) == '#';
-    bool left_blocked = (x == 0) || get_tile(state, get_loc_from_xy(state, x - 1, y)) == '#';
-    bool right_blocked = (x == state->width - 1) || get_tile(state, get_loc_from_xy(state, x + 1, y)) == '#';
+    // Only detect the most obvious corner deadlocks - against actual walls (boundaries)
+    // Don't check against other boxes or obstacles as they might move
+    bool top_wall = (y == 0);
+    bool bottom_wall = (y == state->height - 1);
+    bool left_wall = (x == 0);
+    bool right_wall = (x == state->width - 1);
 
-    // Corner deadlock: blocked in two perpendicular directions
-    return (top_blocked && left_blocked) ||
-           (top_blocked && right_blocked) ||
-           (bottom_blocked && left_blocked) ||
-           (bottom_blocked && right_blocked);
+    // Only consider it a corner deadlock if it's against actual map boundaries
+    // and only if there are still empty targets available
+    bool has_empty_targets = false;
+    for (char c : state->m)
+    {
+        if (c == '.')
+        {
+            has_empty_targets = true;
+            break;
+        }
+    }
+
+    // Only trigger corner deadlock if:
+    // 1. Box is in actual corner of map boundaries (not just against obstacles)
+    // 2. There are still empty targets that need boxes
+    return has_empty_targets && ((top_wall && left_wall) ||
+                                 (top_wall && right_wall) ||
+                                 (bottom_wall && left_wall) ||
+                                 (bottom_wall && right_wall));
 }
 
 bool is_wall_deadlock(const Vertex *state, int box_loc)
 {
+    // If box is on a target, it's not a deadlock
+    if (get_tile(state, box_loc) == 'X')
+    {
+        return false;
+    }
+
+    // Wall deadlock is often too aggressive, disable for now
+    // Most wall positions can potentially be solved by moving along the wall
+    return false;
+
+    /* Original wall deadlock code - commented out as it's too restrictive
     int x = get_x_from_loc(state, box_loc);
     int y = get_y_from_loc(state, box_loc);
 
@@ -318,6 +350,7 @@ bool is_wall_deadlock(const Vertex *state, int box_loc)
     }
 
     return false;
+    */
 }
 
 bool is_freeze_deadlock(const Vertex *state)
@@ -361,19 +394,23 @@ bool is_freeze_deadlock(const Vertex *state)
 
 bool is_deadlock_state(const Vertex *state)
 {
+    // Be very conservative with deadlock detection to avoid false positives
+    // Only check the most obvious deadlocks
+
     // Check freeze deadlock first (affects multiple boxes)
     if (is_freeze_deadlock(state))
     {
         return true;
     }
 
-    // Check individual box deadlocks
+    // Check individual box deadlocks - only for boxes not on targets
     for (int loc = 0; loc < state->m.size(); loc++)
     {
         char tile = state->m[loc];
         if (tile == 'x')
         { // Only check boxes not on targets
-            if (is_corner_deadlock(state, loc) || is_wall_deadlock(state, loc))
+            // Only use corner deadlock detection, wall deadlock is disabled for now
+            if (is_corner_deadlock(state, loc))
             {
                 return true;
             }
