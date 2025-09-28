@@ -290,60 +290,6 @@ bool is_corner_deadlock(const Vertex *state, int box_loc)
            (is_bottom_wall && is_right_wall);
 }
 
-bool is_wall_deadlock(const Vertex *state, int box_loc)
-{
-    // If box is on a target, it's not a deadlock
-    if (get_tile(state, box_loc) == 'X')
-    {
-        return false;
-    }
-
-    // Wall deadlock is often too aggressive, disable for now
-    // Most wall positions can potentially be solved by moving along the wall
-    return false;
-
-    /* Original wall deadlock code - commented out as it's too restrictive
-    int x = get_x_from_loc(state, box_loc);
-    int y = get_y_from_loc(state, box_loc);
-
-    // Check if box is against a wall
-    bool against_top_wall = (y == 0) || get_tile(state, get_loc_from_xy(state, x, y - 1)) == '#';
-    bool against_bottom_wall = (y == state->height - 1) || get_tile(state, get_loc_from_xy(state, x, y + 1)) == '#';
-    bool against_left_wall = (x == 0) || get_tile(state, get_loc_from_xy(state, x - 1, y)) == '#';
-    bool against_right_wall = (x == state->width - 1) || get_tile(state, get_loc_from_xy(state, x + 1, y)) == '#';
-
-    // If against horizontal wall, check if there are targets in the same row
-    if (against_top_wall || against_bottom_wall)
-    {
-        for (int check_x = 0; check_x < state->width; check_x++)
-        {
-            char tile = get_tile(state, get_loc_from_xy(state, check_x, y));
-            if (tile == '.' || tile == 'X' || tile == 'O')
-            {
-                return false; // Found target in same row
-            }
-        }
-        return true; // No targets in this row
-    }
-
-    // If against vertical wall, check if there are targets in the same column
-    if (against_left_wall || against_right_wall)
-    {
-        for (int check_y = 0; check_y < state->height; check_y++)
-        {
-            char tile = get_tile(state, get_loc_from_xy(state, x, check_y));
-            if (tile == '.' || tile == 'X' || tile == 'O')
-            {
-                return false; // Found target in same column
-            }
-        }
-        return true; // No targets in this column
-    }
-
-    return false;
-    */
-}
-
 bool is_freeze_deadlock(const Vertex *state)
 {
     for (int y = 0; y < state->height - 1; y++)
@@ -383,7 +329,7 @@ bool is_freeze_deadlock(const Vertex *state)
     return false;
 }
 
-bool is_deadlock_state(const Vertex *state)
+bool is_deadlock_state(const Vertex *state, const vector<bool> &corner_deadlock_locs)
 {
     // Be very conservative with deadlock detection to avoid false positives
     // Only check the most obvious deadlocks
@@ -395,18 +341,18 @@ bool is_deadlock_state(const Vertex *state)
     }
 
     // Check individual box deadlocks - only for boxes not on targets
-    // for (int loc = 0; loc < state->m.size(); loc++)
-    // {
-    //     char tile = state->m[loc];
-    //     if (tile == 'x')
-    //     { // Only check boxes not on targets
-    //         // Only use corner deadlock detection, wall deadlock is disabled for now
-    //         if (is_corner_deadlock(state, loc))
-    //         {
-    //             return true;
-    //         }
-    //     }
-    // }
+    for (int loc = 0; loc < state->m.size(); loc++)
+    {
+        char tile = state->m[loc];
+        if (tile == 'x')
+        { // Only check boxes not on targets
+            // Only use corner deadlock detection, wall deadlock is disabled for now
+            if (corner_deadlock_locs[loc])
+            {
+                return true;
+            }
+        }
+    }
 
     return false;
 }
@@ -516,7 +462,7 @@ void solve_bfs_with_path(Vertex *start_node)
                     if (next_state)
                     {
                         // Add deadlock detection to prune dead branches
-                        if (is_deadlock_state(next_state))
+                        if (is_deadlock_state(next_state, corner_deadlock_locs))
                         {
                             delete next_state; // Prune this branch
                             continue;
@@ -616,10 +562,3 @@ int main(int argc, char *argv[])
 
     return 0;
 }
-
-// #pragma omp parallel
-// {
-//     int thread_id = omp_get_thread_num();
-//     int num_threads = omp_get_num_threads();
-//     cerr << "Hello from thread " << thread_id << " out of " << num_threads << " threads." << endl;
-// }
