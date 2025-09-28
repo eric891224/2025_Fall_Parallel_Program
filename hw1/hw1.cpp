@@ -259,6 +259,130 @@ bool is_solved(const Vertex *v)
     return true;
 }
 
+// Deadlock detection functions
+bool is_corner_deadlock(const Vertex *state, int box_loc)
+{
+    int x = get_x_from_loc(state, box_loc);
+    int y = get_y_from_loc(state, box_loc);
+
+    // Check if box is against two perpendicular walls/obstacles
+    bool top_blocked = (y == 0) || get_tile(state, get_loc_from_xy(state, x, y - 1)) == '#';
+    bool bottom_blocked = (y == state->height - 1) || get_tile(state, get_loc_from_xy(state, x, y + 1)) == '#';
+    bool left_blocked = (x == 0) || get_tile(state, get_loc_from_xy(state, x - 1, y)) == '#';
+    bool right_blocked = (x == state->width - 1) || get_tile(state, get_loc_from_xy(state, x + 1, y)) == '#';
+
+    // Corner deadlock: blocked in two perpendicular directions
+    return (top_blocked && left_blocked) ||
+           (top_blocked && right_blocked) ||
+           (bottom_blocked && left_blocked) ||
+           (bottom_blocked && right_blocked);
+}
+
+bool is_wall_deadlock(const Vertex *state, int box_loc)
+{
+    int x = get_x_from_loc(state, box_loc);
+    int y = get_y_from_loc(state, box_loc);
+
+    // Check if box is against a wall
+    bool against_top_wall = (y == 0) || get_tile(state, get_loc_from_xy(state, x, y - 1)) == '#';
+    bool against_bottom_wall = (y == state->height - 1) || get_tile(state, get_loc_from_xy(state, x, y + 1)) == '#';
+    bool against_left_wall = (x == 0) || get_tile(state, get_loc_from_xy(state, x - 1, y)) == '#';
+    bool against_right_wall = (x == state->width - 1) || get_tile(state, get_loc_from_xy(state, x + 1, y)) == '#';
+
+    // If against horizontal wall, check if there are targets in the same row
+    if (against_top_wall || against_bottom_wall)
+    {
+        for (int check_x = 0; check_x < state->width; check_x++)
+        {
+            char tile = get_tile(state, get_loc_from_xy(state, check_x, y));
+            if (tile == '.' || tile == 'X' || tile == 'O')
+            {
+                return false; // Found target in same row
+            }
+        }
+        return true; // No targets in this row
+    }
+
+    // If against vertical wall, check if there are targets in the same column
+    if (against_left_wall || against_right_wall)
+    {
+        for (int check_y = 0; check_y < state->height; check_y++)
+        {
+            char tile = get_tile(state, get_loc_from_xy(state, x, check_y));
+            if (tile == '.' || tile == 'X' || tile == 'O')
+            {
+                return false; // Found target in same column
+            }
+        }
+        return true; // No targets in this column
+    }
+
+    return false;
+}
+
+bool is_freeze_deadlock(const Vertex *state)
+{
+    for (int y = 0; y < state->height - 1; y++)
+    {
+        for (int x = 0; x < state->width - 1; x++)
+        {
+            // Check 2x2 area
+            int tl = get_loc_from_xy(state, x, y);         // top-left
+            int tr = get_loc_from_xy(state, x + 1, y);     // top-right
+            int bl = get_loc_from_xy(state, x, y + 1);     // bottom-left
+            int br = get_loc_from_xy(state, x + 1, y + 1); // bottom-right
+
+            char tl_tile = get_tile(state, tl);
+            char tr_tile = get_tile(state, tr);
+            char bl_tile = get_tile(state, bl);
+            char br_tile = get_tile(state, br);
+
+            // Check if all four positions have boxes
+            bool all_boxes = (tl_tile == 'x' || tl_tile == 'X') &&
+                             (tr_tile == 'x' || tr_tile == 'X') &&
+                             (bl_tile == 'x' || bl_tile == 'X') &&
+                             (br_tile == 'x' || br_tile == 'X');
+
+            if (all_boxes)
+            {
+                // Check if all boxes are on targets (if so, it's not a deadlock)
+                bool all_on_targets = (tl_tile == 'X') && (tr_tile == 'X') &&
+                                      (bl_tile == 'X') && (br_tile == 'X');
+
+                if (!all_on_targets)
+                {
+                    return true; // Freeze deadlock detected
+                }
+            }
+        }
+    }
+    return false;
+}
+
+bool is_deadlock_state(const Vertex *state)
+{
+    // Check freeze deadlock first (affects multiple boxes)
+    if (is_freeze_deadlock(state))
+    {
+        return true;
+    }
+
+    // Check individual box deadlocks
+    for (int loc = 0; loc < state->m.size(); loc++)
+    {
+        char tile = state->m[loc];
+        if (tile == 'x')
+        { // Only check boxes not on targets
+            if (is_corner_deadlock(state, loc) || is_wall_deadlock(state, loc))
+            {
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
 /* BFS-related */
 // Custom hash function for vector<char> to avoid string conversion
 struct StateHash
@@ -351,6 +475,13 @@ void solve_bfs_with_path(Vertex *start_node)
                     Vertex *next_state = try_push(current_v, move.first, move.second);
                     if (next_state)
                     {
+                        // Add deadlock detection to prune dead branches
+                        if (is_deadlock_state(next_state))
+                        {
+                            delete next_state; // Prune this branch
+                            continue;
+                        }
+
                         // Store in thread-local containers first
                         thread_local_states[thread_id].push_back(next_state);
                         thread_local_visited[thread_id].emplace_back(
