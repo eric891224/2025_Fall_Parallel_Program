@@ -272,31 +272,35 @@ bool is_corner_deadlock(const Vertex *state, int box_loc)
     int y = get_y_from_loc(state, box_loc);
 
     // Only detect the most obvious corner deadlocks - against actual walls (boundaries)
-    // Don't check against other boxes or obstacles as they might move
-    bool top_wall = (y == 0);
-    bool bottom_wall = (y == state->height - 1);
-    bool left_wall = (x == 0);
-    bool right_wall = (x == state->width - 1);
+    bool is_top_wall = get_tile(state, y - 1) == '#';
+    bool is_bottom_wall = get_tile(state, y + 1) == '#';
+    bool is_left_wall = get_tile(state, y) == '#';
+    bool is_right_wall = get_tile(state, y) == '#';
+
+    return (is_top_wall && is_left_wall) ||
+           (is_top_wall && is_right_wall) ||
+           (is_bottom_wall && is_left_wall) ||
+           (is_bottom_wall && is_right_wall);
 
     // Only consider it a corner deadlock if it's against actual map boundaries
     // and only if there are still empty targets available
-    bool has_empty_targets = false;
-    for (char c : state->m)
-    {
-        if (c == '.')
-        {
-            has_empty_targets = true;
-            break;
-        }
-    }
+    // bool has_empty_targets = false;
+    // for (char c : state->m)
+    // {
+    //     if (c == '.')
+    //     {
+    //         has_empty_targets = true;
+    //         break;
+    //     }
+    // }
 
     // Only trigger corner deadlock if:
     // 1. Box is in actual corner of map boundaries (not just against obstacles)
     // 2. There are still empty targets that need boxes
-    return has_empty_targets && ((top_wall && left_wall) ||
-                                 (top_wall && right_wall) ||
-                                 (bottom_wall && left_wall) ||
-                                 (bottom_wall && right_wall));
+    // return has_empty_targets && ((top_wall && left_wall) ||
+    //                              (top_wall && right_wall) ||
+    //                              (bottom_wall && left_wall) ||
+    //                              (bottom_wall && right_wall));
 }
 
 bool is_wall_deadlock(const Vertex *state, int box_loc)
