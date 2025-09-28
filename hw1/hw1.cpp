@@ -272,10 +272,10 @@ bool is_corner_deadlock(const Vertex *state, int box_loc)
     int y = get_y_from_loc(state, box_loc);
 
     // Only detect the most obvious corner deadlocks - against actual walls (boundaries)
-    bool is_top_wall = get_tile(state, y - 1) == '#';
-    bool is_bottom_wall = get_tile(state, y + 1) == '#';
-    bool is_left_wall = get_tile(state, y) == '#';
-    bool is_right_wall = get_tile(state, y) == '#';
+    bool is_top_wall = get_tile(state, get_loc_from_xy(state, x, y - 1)) == '#';
+    bool is_bottom_wall = get_tile(state, get_loc_from_xy(state, x, y + 1)) == '#';
+    bool is_left_wall = get_tile(state, get_loc_from_xy(state, x - 1, y)) == '#';
+    bool is_right_wall = get_tile(state, get_loc_from_xy(state, x + 1, y)) == '#';
 
     return (is_top_wall && is_left_wall) ||
            (is_top_wall && is_right_wall) ||
