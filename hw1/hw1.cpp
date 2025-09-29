@@ -40,6 +40,39 @@ struct Vertex
     // vector<int> target_locs; // not updated
 };
 
+// Placeholder for more complex dead pattern detection (3x3 space)
+// ?: don't care
+vector<vector<char>> DEAD_PATTERNS = {
+    /*
+    ?x#
+    ?x#
+    ???
+    */
+    {'?', 'x', '#', '?', 'x', '#', '?', '?', '?'},
+    {'?', '?', '?', '?', 'x', 'x', '?', '#', '#'},
+    {'?', '?', '?', '#', 'x', '?', '#', 'x', '?'},
+    {'#', '#', '?', 'x', 'x', '?', '?', '?', '?'},
+    /*
+    ?x#
+    ?xx
+    ???
+    */
+    {'?', 'x', '#', '?', 'x', 'x', '?', '?', '?'},
+    {'?', '?', '?', '?', 'x', 'x', '?', 'x', '#'},
+    {'?', '?', '?', 'x', 'x', '?', '#', 'x', '?'},
+    {'#', 'x', '?', 'x', 'x', '?', '?', '?', '?'},
+    /*
+    ?x#
+    #x?
+    ?x#
+    */
+    {'?', 'x', '#', '#', 'x', '?', '?', 'x', '#'},
+    {'?', '#', '?', 'x', 'x', 'x', '#', '?', '#'},
+    {'#', 'x', '?', '?', 'x', '#', '#', 'x', '?'},
+    {'#', '?', '#', 'x', 'x', 'x', '?', '#', '?'},
+    // Add more patterns as needed
+};
+
 char get_tile(const Vertex *vertex, int loc)
 {
     if (loc < 0 || loc >= vertex->width * vertex->height)
@@ -170,12 +203,6 @@ Vertex *try_push(const Vertex *cur_state, int dy, int dx)
             return nullptr;
         }
 
-        // check if box pushed into corner deadlock position
-        // if (corner_deadlock_locs[get_loc_from_xy(cur_state, xxx, yyy)])
-        // {
-        //     delete next_state;
-        //     return nullptr;
-        // }
         int after_box_loc = get_loc_from_xy(cur_state, xxx, yyy);
         char after_box_tile = get_tile(cur_state, after_box_loc);
 
@@ -225,34 +252,6 @@ Vertex *try_push(const Vertex *cur_state, int dy, int dx)
 
     return next_state;
 }
-
-// void test_try_push(const Vertex *v)
-// {
-//     cerr << "\n--- Testing try_push ---" << endl;
-//     for (auto const &[dir, move] : DYDX)
-//     {
-//         cerr << "Trying to move " << dir << "..." << endl;
-//         Vertex *next_state = try_push(v, move.first, move.second);
-//         if (next_state)
-//         {
-//             cerr << "Move successful. New state:" << endl;
-//             for (int i = 0; i < next_state->height; ++i)
-//             {
-//                 for (int j = 0; j < next_state->width; ++j)
-//                 {
-//                     cerr << next_state->m[i * next_state->width + j];
-//                 }
-//                 cerr << endl;
-//             }
-//             delete next_state; // Clean up the allocated memory
-//         }
-//         else
-//         {
-//             cerr << "Move invalid." << endl;
-//         }
-//         cerr << "------------------------" << endl;
-//     }
-// }
 
 bool is_solved(const Vertex *v)
 {
@@ -404,7 +403,62 @@ bool is_freeze_deadlock(const Vertex *state)
     return false;
 }
 
-bool is_deadlock_state(const Vertex *state, const vector<bool> &corner_deadlock_locs)
+bool is_dead_pattern(const Vertex *state, int box_loc)
+{
+    int x = get_x_from_loc(state, box_loc);
+    int y = get_y_from_loc(state, box_loc);
+    if (get_tile(state, box_loc) == 'X')
+    {
+        return false; // Box on target is not a deadlock
+    }
+    
+    vector<char> area(9, '?'); // Initialize with don't care
+    int idx = 0;
+    for (int dy = -1; dy <= 1; dy++)
+    {
+        for (int dx = -1; dx <= 1; dx++)
+        {
+            int yy = y + dy;
+            int xx = x + dx;
+            if (yy < 0 || yy >= state->height || xx < 0 || xx >= state->width)
+            {
+                area[idx++] = '#'; // Out of bounds treated as wall
+            }
+            else
+            {
+                char tile = get_tile(state, get_loc_from_xy(state, xx, yy));
+                if (tile == '#')
+                    area[idx++] = '#';
+                else if (tile == 'x' || tile == 'X')
+                    area[idx++] = 'x';
+                else 
+                    area[idx++] = ' '; // Treat everything else as empty
+            }
+        }
+    }
+
+    // Check against all dead patterns
+    for (const auto &pattern : DEAD_PATTERNS)
+    {
+        bool match = true;
+        for (int i = 0; i < 9; i++)
+        {
+            if (pattern[i] != '?' && pattern[i] != area[i])
+            {
+                match = false;
+                break;
+            }
+        }
+        if (match)
+        {
+            return true; // Dead pattern detected
+        }
+    }
+
+    return false;
+}
+
+bool is_deadlock_state(const Vertex *state)
 {
     // Be very conservative with deadlock detection to avoid false positives
     // Only check the most obvious deadlocks
@@ -422,11 +476,15 @@ bool is_deadlock_state(const Vertex *state, const vector<bool> &corner_deadlock_
         if (tile == 'x')
         { // Only check boxes not on targets
             // Only use corner deadlock detection, wall deadlock is disabled for now
-            if (corner_deadlock_locs[loc])
+            if (is_corner_deadlock(state, loc))
             {
                 return true;
             }
             if (is_wall_deadlock(state, loc))
+            {
+                return true;
+            }
+            if (is_dead_pattern(state, loc))
             {
                 return true;
             }
@@ -590,17 +648,17 @@ void solve_bfs_with_path(Vertex *start_node)
     vector<Vertex *> current_level;
     vector<Vertex *> next_level;
 
-    vector<bool> corner_deadlock_locs(start_node->width * start_node->height, false);
-    // Precompute corner deadlock positions
-#pragma omp parallel for schedule(dynamic, 64)
-    for (int loc = 0; loc < start_node->m.size(); loc++)
-    {
-        char tile = start_node->m[loc];
-        if (tile == ' ' || tile == 'o')
-        {
-            corner_deadlock_locs[loc] = is_corner_deadlock(start_node, loc);
-        }
-    }
+//     vector<bool> corner_deadlock_locs(start_node->width * start_node->height, false);
+//     // Precompute corner deadlock positions
+// #pragma omp parallel for schedule(dynamic, 64)
+//     for (int loc = 0; loc < start_node->m.size(); loc++)
+//     {
+//         char tile = start_node->m[loc];
+//         if (tile == ' ' || tile == 'o')
+//         {
+//             corner_deadlock_locs[loc] = is_corner_deadlock(start_node, loc);
+//         }
+//     }
 
     // Pre-allocate vectors for better performance
     current_level.reserve(10000);
@@ -657,7 +715,7 @@ void solve_bfs_with_path(Vertex *start_node)
                     if (next_state)
                     {
                         // Add deadlock detection to prune dead branches
-                        if (is_deadlock_state(next_state, corner_deadlock_locs))
+                        if (is_deadlock_state(next_state))
                         {
                             delete next_state; // Prune this branch
                             continue;
