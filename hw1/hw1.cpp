@@ -291,6 +291,80 @@ bool is_corner_deadlock(const Vertex *state, int box_loc)
            (is_bottom_wall && is_right_wall);
 }
 
+bool is_wall_deadlock(const Vertex *state, int box_loc)
+{
+    // If box is on a target, it's not a deadlock
+    if (get_tile(state, box_loc) == 'X')
+    {
+        return false;
+    }
+
+    int x = get_x_from_loc(state, box_loc);
+    int y = get_y_from_loc(state, box_loc);
+    bool deadlock = false;
+
+    // Check vertical wall deadlock
+    bool left_wall = get_tile(state, get_loc_from_xy(state, x - 1, y)) == '#';
+    bool right_wall = get_tile(state, get_loc_from_xy(state, x + 1, y)) == '#';
+    vector<int> test_wall_x;
+    if (left_wall) test_wall_x.push_back(x - 1);
+    if (right_wall) test_wall_x.push_back(x + 1);
+
+    for (int xx : test_wall_x) {
+        deadlock = true;
+        // check if no escape below the box
+        for (int yy = y; get_tile(state, get_loc_from_xy(state, x, yy)) != '#'; yy++) {
+            char wall_tile = get_tile(state, get_loc_from_xy(state, xx, yy));
+            char tile = get_tile(state, get_loc_from_xy(state, x, yy));
+            if (tile == '.' || tile == 'O' || wall_tile != '#') {
+                deadlock = false; // There's a target in the same column or an escape route
+                break;
+            }
+        }
+        // check if no escape above the box
+        for (int yy = y; get_tile(state, get_loc_from_xy(state, x, yy)) != '#'; yy--) {
+            char wall_tile = get_tile(state, get_loc_from_xy(state, xx, yy));
+            char tile = get_tile(state, get_loc_from_xy(state, x, yy));
+            if (tile == '.' || tile == 'O' || wall_tile != '#') {
+                deadlock = false; // There's a target in the same column or an escape route
+                break;
+            }
+        }
+        if (deadlock) return true; // Wall deadlock detected
+    }
+    
+    // Check horizontal wall deadlock
+    bool top_wall = get_tile(state, get_loc_from_xy(state, x, y - 1)) == '#';
+    bool bottom_wall = get_tile(state, get_loc_from_xy(state, x, y + 1)) == '#';
+    vector<int> test_wall_y;
+    if (top_wall) test_wall_y.push_back(y - 1);
+    if (bottom_wall) test_wall_y.push_back(y + 1);
+    
+    for (int yy : test_wall_y) {
+        deadlock = true;
+        // check if no escape to the right of the box
+        for (int xx = x; get_tile(state, get_loc_from_xy(state, xx, y)) != '#'; xx++) {
+            char wall_tile = get_tile(state, get_loc_from_xy(state, xx, yy));
+            char tile = get_tile(state, get_loc_from_xy(state, xx, y));
+            if (tile == '.' || tile == 'O' || wall_tile != '#') {
+                deadlock = false; // There's a target in the same row or an escape route
+                break;
+            }
+        }
+        // check if no escape to the left of the box
+        for (int xx = x; get_tile(state, get_loc_from_xy(state, xx, y)) != '#'; xx--) {
+            char wall_tile = get_tile(state, get_loc_from_xy(state, xx, yy));
+            char tile = get_tile(state, get_loc_from_xy(state, xx, y));
+            if (tile == '.' || tile == 'O' || wall_tile != '#') {
+                deadlock = false; // There's a target in the same row or an escape route
+                break;
+            }
+        }
+        if (deadlock) return true; // Wall deadlock detected
+    }
+    return false;
+}
+
 bool is_freeze_deadlock(const Vertex *state)
 {
     for (int y = 0; y < state->height - 1; y++)
@@ -349,6 +423,10 @@ bool is_deadlock_state(const Vertex *state, const vector<bool> &corner_deadlock_
         { // Only check boxes not on targets
             // Only use corner deadlock detection, wall deadlock is disabled for now
             if (corner_deadlock_locs[loc])
+            {
+                return true;
+            }
+            if (is_wall_deadlock(state, loc))
             {
                 return true;
             }
