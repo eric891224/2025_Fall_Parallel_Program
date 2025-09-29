@@ -4,16 +4,17 @@
 #include <fstream>
 #include <unordered_map>
 #include <queue>
+#include <stack>
 #include <string>
 #include <algorithm>
 
 using namespace std;
 
-unordered_map<string, pair<int, int>> DYDX = {
-    {"W", {-1, 0}},
-    {"A", {0, -1}},
-    {"S", {1, 0}},
-    {"D", {0, 1}},
+unordered_map<char, pair<int, int>> DYDX = {
+    {'W', {-1, 0}},
+    {'A', {0, -1}},
+    {'S', {1, 0}},
+    {'D', {0, 1}},
 };
 
 /*
@@ -128,7 +129,7 @@ void load_state_from_path(Vertex *vertex, const char *path)
     return the next game state if the move is valid
     return nullptr otherwise
 */
-Vertex *try_push(const Vertex *cur_state, int dy, int dx, const vector<bool> &corner_deadlock_locs)
+Vertex *try_push(const Vertex *cur_state, int dy, int dx)
 {
     int y = get_y_from_loc(cur_state, cur_state->player_loc);
     int x = get_x_from_loc(cur_state, cur_state->player_loc);
@@ -170,11 +171,11 @@ Vertex *try_push(const Vertex *cur_state, int dy, int dx, const vector<bool> &co
         }
 
         // check if box pushed into corner deadlock position
-        if (corner_deadlock_locs[get_loc_from_xy(cur_state, xxx, yyy)])
-        {
-            delete next_state;
-            return nullptr;
-        }
+        // if (corner_deadlock_locs[get_loc_from_xy(cur_state, xxx, yyy)])
+        // {
+        //     delete next_state;
+        //     return nullptr;
+        // }
         int after_box_loc = get_loc_from_xy(cur_state, xxx, yyy);
         char after_box_tile = get_tile(cur_state, after_box_loc);
 
@@ -387,6 +388,120 @@ struct StateInfo
     StateInfo(Vertex *p, char m) : parent(p), move(m) {}
 };
 
+/* player DFS to pushable boxes */
+void dfs_player_reachable(
+    Vertex *init_state, 
+    vector<Vertex *> &current_level, 
+    unordered_map<vector<char>, StateInfo, StateHash> &visited, 
+    vector<Vertex *> &allocated_vertices
+)
+{
+    stack<Vertex *> dfs_stack;
+    dfs_stack.push(init_state);
+
+    vector<bool> visited_positions(init_state->width * init_state->height, false);
+    visited_positions[init_state->player_loc] = true;
+
+
+    while (!dfs_stack.empty())
+    {
+        Vertex * current_v = dfs_stack.top();
+        dfs_stack.pop();
+
+        int y = get_y_from_loc(current_v, current_v->player_loc);
+        int x = get_x_from_loc(current_v, current_v->player_loc);
+
+        for (auto const &[dir_str, move] : DYDX)
+        {
+            int yy = y + move.first;
+            int xx = x + move.second;
+
+            // Check bounds
+            if (yy < 0 || yy >= current_v->height || xx < 0 || xx >= current_v->width)
+            {
+                continue;
+            }
+
+            int next_loc = get_loc_from_xy(current_v, xx, yy);
+            char next_tile = get_tile(current_v, next_loc);
+
+            // Can move to empty space, target, or fragile tile
+            if ((next_tile == ' ' || next_tile == '.' || next_tile == '@') && !visited_positions[next_loc])
+            {
+                visited_positions[next_loc] = true;
+                // Create new state with updated player position
+                Vertex *new_state = new Vertex(*current_v);
+                dfs_stack.push(new_state);
+
+                // Update player's original position
+                char original_player_tile = get_tile(current_v, current_v->player_loc);
+                if (original_player_tile == 'o')
+                    new_state->m[current_v->player_loc] = ' ';
+                else if (original_player_tile == '!')
+                    new_state->m[current_v->player_loc] = '@';
+                else // original_player_tile == 'O'
+                    new_state->m[current_v->player_loc] = '.';
+
+                // Update new player position
+                if (next_tile == ' ')
+                    new_state->m[next_loc] = 'o';
+                else if (next_tile == '.')
+                    new_state->m[next_loc] = 'O';
+                else // next_tile == '@'
+                    new_state->m[next_loc] = '!';
+
+                new_state->player_loc = next_loc;
+
+                /* check if boxes around are pushable */
+                bool can_push_box = false;
+                for (auto const &[dir_str, move] : DYDX)
+                {
+                    int box_y = yy + move.first;
+                    int box_x = xx + move.second;
+
+                    // Check bounds
+                    if (box_y < 0 || box_y >= current_v->height || box_x < 0 || box_x >= current_v->width)
+                    {
+                        continue;
+                    }
+
+                    int box_loc = get_loc_from_xy(current_v, box_x, box_y);
+                    char box_tile = get_tile(current_v, box_loc);
+
+                    // If there's a box, try to push it
+                    if (box_tile == 'x' || box_tile == 'X')
+                    {
+                        Vertex *pushed_state = try_push(new_state, move.first, move.second);
+                        if (pushed_state)
+                        {
+                            can_push_box = true;
+                            delete pushed_state;
+                            break;
+                        }
+                    }
+                }
+
+                // Store in visited and current level
+                vector<char> state_vec = new_state->m;
+                if (visited.find(state_vec) == visited.end())
+                {
+                    visited[state_vec] = StateInfo(const_cast<Vertex *>(current_v), dir_str);
+                    if (can_push_box) {
+                        // print_position(new_state, new_state->player_loc);
+                        current_level.push_back(new_state);
+                    }
+                    allocated_vertices.push_back(new_state);
+                }
+                else
+                {
+                    delete new_state; // Already visited
+                }
+            }
+        }
+    }
+    return;
+}
+
 /*
     Solves the puzzle using parallel BFS and reconstructs the path.
     Uses level-synchronous parallelization where all states at each BFS level
@@ -420,6 +535,8 @@ void solve_bfs_with_path(Vertex *start_node)
 
     current_level.push_back(start_node);
     visited[start_node->m] = StateInfo(nullptr, 0); // Start node has no parent
+
+    dfs_player_reachable(start_node, current_level, visited, allocated_vertices);
 
     bool solved = false;
     Vertex *final_state = nullptr;
@@ -458,7 +575,7 @@ void solve_bfs_with_path(Vertex *start_node)
                 // Try all possible moves
                 for (auto const &[dir_str, move] : DYDX)
                 {
-                    Vertex *next_state = try_push(current_v, move.first, move.second, corner_deadlock_locs);
+                    Vertex *next_state = try_push(current_v, move.first, move.second);
                     if (next_state)
                     {
                         // Add deadlock detection to prune dead branches
@@ -471,7 +588,7 @@ void solve_bfs_with_path(Vertex *start_node)
                         // Store in thread-local containers first
                         thread_local_states[thread_id].push_back(next_state);
                         thread_local_visited[thread_id].emplace_back(
-                            next_state->m, StateInfo(current_v, dir_str[0]));
+                            next_state->m, StateInfo(current_v, dir_str));
                     }
                 }
             }
