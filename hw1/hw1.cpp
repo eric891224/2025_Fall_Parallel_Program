@@ -514,7 +514,7 @@ void solve_bfs_with_path(Vertex *start_node)
 
     vector<bool> corner_deadlock_locs(start_node->width * start_node->height, false);
     // Precompute corner deadlock positions
-#pragma omp parallel for
+#pragma omp parallel for schedule(dynamic, 64)
     for (int loc = 0; loc < start_node->m.size(); loc++)
     {
         char tile = start_node->m[loc];
@@ -536,7 +536,7 @@ void solve_bfs_with_path(Vertex *start_node)
     current_level.push_back(start_node);
     visited[start_node->m] = StateInfo(nullptr, 0); // Start node has no parent
 
-    dfs_player_reachable(start_node, current_level, visited, allocated_vertices);
+    // dfs_player_reachable(start_node, current_level, visited, allocated_vertices);
 
     bool solved = false;
     Vertex *final_state = nullptr;
@@ -553,7 +553,7 @@ void solve_bfs_with_path(Vertex *start_node)
         {
             int thread_id = omp_get_thread_num();
 
-#pragma omp for schedule(dynamic, 1)
+#pragma omp for schedule(dynamic, 32)
             for (int i = 0; i < current_level.size(); i++)
             {
                 Vertex *current_v = current_level[i];
