@@ -306,60 +306,76 @@ bool is_wall_deadlock(const Vertex *state, int box_loc)
     bool left_wall = get_tile(state, get_loc_from_xy(state, x - 1, y)) == '#';
     bool right_wall = get_tile(state, get_loc_from_xy(state, x + 1, y)) == '#';
     vector<int> test_wall_x;
-    if (left_wall) test_wall_x.push_back(x - 1);
-    if (right_wall) test_wall_x.push_back(x + 1);
+    if (left_wall)
+        test_wall_x.push_back(x - 1);
+    if (right_wall)
+        test_wall_x.push_back(x + 1);
 
-    for (int xx : test_wall_x) {
+    for (int xx : test_wall_x)
+    {
         deadlock = true;
         // check if no escape below the box
-        for (int yy = y; get_tile(state, get_loc_from_xy(state, x, yy)) != '#'; yy++) {
+        for (int yy = y; get_tile(state, get_loc_from_xy(state, x, yy)) != '#'; yy++)
+        {
             char wall_tile = get_tile(state, get_loc_from_xy(state, xx, yy));
             char tile = get_tile(state, get_loc_from_xy(state, x, yy));
-            if (tile == '.' || tile == 'O' || wall_tile != '#') {
+            if (tile == '.' || tile == 'O' || wall_tile != '#')
+            {
                 deadlock = false; // There's a target in the same column or an escape route
                 break;
             }
         }
         // check if no escape above the box
-        for (int yy = y; get_tile(state, get_loc_from_xy(state, x, yy)) != '#'; yy--) {
+        for (int yy = y; get_tile(state, get_loc_from_xy(state, x, yy)) != '#'; yy--)
+        {
             char wall_tile = get_tile(state, get_loc_from_xy(state, xx, yy));
             char tile = get_tile(state, get_loc_from_xy(state, x, yy));
-            if (tile == '.' || tile == 'O' || wall_tile != '#') {
+            if (tile == '.' || tile == 'O' || wall_tile != '#')
+            {
                 deadlock = false; // There's a target in the same column or an escape route
                 break;
             }
         }
-        if (deadlock) return true; // Wall deadlock detected
+        if (deadlock)
+            return true; // Wall deadlock detected
     }
-    
+
     // Check horizontal wall deadlock
     bool top_wall = get_tile(state, get_loc_from_xy(state, x, y - 1)) == '#';
     bool bottom_wall = get_tile(state, get_loc_from_xy(state, x, y + 1)) == '#';
     vector<int> test_wall_y;
-    if (top_wall) test_wall_y.push_back(y - 1);
-    if (bottom_wall) test_wall_y.push_back(y + 1);
-    
-    for (int yy : test_wall_y) {
+    if (top_wall)
+        test_wall_y.push_back(y - 1);
+    if (bottom_wall)
+        test_wall_y.push_back(y + 1);
+
+    for (int yy : test_wall_y)
+    {
         deadlock = true;
         // check if no escape to the right of the box
-        for (int xx = x; get_tile(state, get_loc_from_xy(state, xx, y)) != '#'; xx++) {
+        for (int xx = x; get_tile(state, get_loc_from_xy(state, xx, y)) != '#'; xx++)
+        {
             char wall_tile = get_tile(state, get_loc_from_xy(state, xx, yy));
             char tile = get_tile(state, get_loc_from_xy(state, xx, y));
-            if (tile == '.' || tile == 'O' || wall_tile != '#') {
+            if (tile == '.' || tile == 'O' || wall_tile != '#')
+            {
                 deadlock = false; // There's a target in the same row or an escape route
                 break;
             }
         }
         // check if no escape to the left of the box
-        for (int xx = x; get_tile(state, get_loc_from_xy(state, xx, y)) != '#'; xx--) {
+        for (int xx = x; get_tile(state, get_loc_from_xy(state, xx, y)) != '#'; xx--)
+        {
             char wall_tile = get_tile(state, get_loc_from_xy(state, xx, yy));
             char tile = get_tile(state, get_loc_from_xy(state, xx, y));
-            if (tile == '.' || tile == 'O' || wall_tile != '#') {
+            if (tile == '.' || tile == 'O' || wall_tile != '#')
+            {
                 deadlock = false; // There's a target in the same row or an escape route
                 break;
             }
         }
-        if (deadlock) return true; // Wall deadlock detected
+        if (deadlock)
+            return true; // Wall deadlock detected
     }
     return false;
 }
@@ -411,7 +427,7 @@ bool is_dead_pattern(const Vertex *state, int box_loc)
     {
         return false; // Box on target is not a deadlock
     }
-    
+
     vector<char> area(9, '?'); // Initialize with don't care
     int idx = 0;
     for (int dy = -1; dy <= 1; dy++)
@@ -431,7 +447,7 @@ bool is_dead_pattern(const Vertex *state, int box_loc)
                     area[idx++] = '#';
                 else if (tile == 'x' || tile == 'X')
                     area[idx++] = 'x';
-                else 
+                else
                     area[idx++] = ' '; // Treat everything else as empty
             }
         }
@@ -524,120 +540,6 @@ struct StateInfo
     StateInfo(Vertex *p, char m) : parent(p), move(m) {}
 };
 
-/* player DFS to pushable boxes */
-void dfs_player_reachable(
-    Vertex *init_state, 
-    vector<Vertex *> &current_level, 
-    unordered_map<vector<char>, StateInfo, StateHash> &visited, 
-    vector<Vertex *> &allocated_vertices
-)
-{
-    stack<Vertex *> dfs_stack;
-    dfs_stack.push(init_state);
-
-    vector<bool> visited_positions(init_state->width * init_state->height, false);
-    visited_positions[init_state->player_loc] = true;
-
-
-    while (!dfs_stack.empty())
-    {
-        Vertex * current_v = dfs_stack.top();
-        dfs_stack.pop();
-
-        int y = get_y_from_loc(current_v, current_v->player_loc);
-        int x = get_x_from_loc(current_v, current_v->player_loc);
-
-        for (auto const &[dir_str, move] : DYDX)
-        {
-            int yy = y + move.first;
-            int xx = x + move.second;
-
-            // Check bounds
-            if (yy < 0 || yy >= current_v->height || xx < 0 || xx >= current_v->width)
-            {
-                continue;
-            }
-
-            int next_loc = get_loc_from_xy(current_v, xx, yy);
-            char next_tile = get_tile(current_v, next_loc);
-
-            // Can move to empty space, target, or fragile tile
-            if ((next_tile == ' ' || next_tile == '.' || next_tile == '@') && !visited_positions[next_loc])
-            {
-                visited_positions[next_loc] = true;
-                // Create new state with updated player position
-                Vertex *new_state = new Vertex(*current_v);
-                dfs_stack.push(new_state);
-
-                // Update player's original position
-                char original_player_tile = get_tile(current_v, current_v->player_loc);
-                if (original_player_tile == 'o')
-                    new_state->m[current_v->player_loc] = ' ';
-                else if (original_player_tile == '!')
-                    new_state->m[current_v->player_loc] = '@';
-                else // original_player_tile == 'O'
-                    new_state->m[current_v->player_loc] = '.';
-
-                // Update new player position
-                if (next_tile == ' ')
-                    new_state->m[next_loc] = 'o';
-                else if (next_tile == '.')
-                    new_state->m[next_loc] = 'O';
-                else // next_tile == '@'
-                    new_state->m[next_loc] = '!';
-
-                new_state->player_loc = next_loc;
-
-                /* check if boxes around are pushable */
-                bool can_push_box = false;
-                for (auto const &[dir_str, move] : DYDX)
-                {
-                    int box_y = yy + move.first;
-                    int box_x = xx + move.second;
-
-                    // Check bounds
-                    if (box_y < 0 || box_y >= current_v->height || box_x < 0 || box_x >= current_v->width)
-                    {
-                        continue;
-                    }
-
-                    int box_loc = get_loc_from_xy(current_v, box_x, box_y);
-                    char box_tile = get_tile(current_v, box_loc);
-
-                    // If there's a box, try to push it
-                    if (box_tile == 'x' || box_tile == 'X')
-                    {
-                        Vertex *pushed_state = try_push(new_state, move.first, move.second);
-                        if (pushed_state)
-                        {
-                            can_push_box = true;
-                            delete pushed_state;
-                            break;
-                        }
-                    }
-                }
-
-                // Store in visited and current level
-                vector<char> state_vec = new_state->m;
-                if (visited.find(state_vec) == visited.end())
-                {
-                    visited[state_vec] = StateInfo(const_cast<Vertex *>(current_v), dir_str);
-                    if (can_push_box) {
-                        // print_position(new_state, new_state->player_loc);
-                        current_level.push_back(new_state);
-                    }
-                    allocated_vertices.push_back(new_state);
-                }
-                else
-                {
-                    delete new_state; // Already visited
-                }
-            }
-        }
-    }
-    return;
-}
-
 /*
     Solves the puzzle using parallel BFS and reconstructs the path.
     Uses level-synchronous parallelization where all states at each BFS level
@@ -648,17 +550,17 @@ void solve_bfs_with_path(Vertex *start_node)
     vector<Vertex *> current_level;
     vector<Vertex *> next_level;
 
-//     vector<bool> corner_deadlock_locs(start_node->width * start_node->height, false);
-//     // Precompute corner deadlock positions
-// #pragma omp parallel for schedule(dynamic, 64)
-//     for (int loc = 0; loc < start_node->m.size(); loc++)
-//     {
-//         char tile = start_node->m[loc];
-//         if (tile == ' ' || tile == 'o')
-//         {
-//             corner_deadlock_locs[loc] = is_corner_deadlock(start_node, loc);
-//         }
-//     }
+    //     vector<bool> corner_deadlock_locs(start_node->width * start_node->height, false);
+    //     // Precompute corner deadlock positions
+    // #pragma omp parallel for schedule(dynamic, 64)
+    //     for (int loc = 0; loc < start_node->m.size(); loc++)
+    //     {
+    //         char tile = start_node->m[loc];
+    //         if (tile == ' ' || tile == 'o')
+    //         {
+    //             corner_deadlock_locs[loc] = is_corner_deadlock(start_node, loc);
+    //         }
+    //     }
 
     // Pre-allocate vectors for better performance
     current_level.reserve(10000);
@@ -671,8 +573,6 @@ void solve_bfs_with_path(Vertex *start_node)
 
     current_level.push_back(start_node);
     visited[start_node->m] = StateInfo(nullptr, 0); // Start node has no parent
-
-    // dfs_player_reachable(start_node, current_level, visited, allocated_vertices);
 
     bool solved = false;
     Vertex *final_state = nullptr;

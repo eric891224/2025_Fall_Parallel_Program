@@ -73,6 +73,13 @@ int get_y_from_loc(const Vertex *vertex, int loc)
     return loc / vertex->width;
 }
 
+void print_position(const Vertex *vertex, int loc)
+{
+    int x = get_x_from_loc(vertex, loc);
+    int y = get_y_from_loc(vertex, loc);
+    cerr << "PositionYX: (" << y << ", " << x << ")" << endl;
+}
+
 void load_state_from_path(Vertex *vertex, const char *path)
 {
     ifstream input(path);
@@ -81,159 +88,176 @@ void load_state_from_path(Vertex *vertex, const char *path)
         throw runtime_error("Could not open file");
     }
 
-    vector<string> lines;
+    int y = 0, width = 0;
     string line;
-    int width = 0;
-    
-    // First pass: read all lines and calculate width
     while (getline(input, line))
     {
-        lines.push_back(line);
         width = max(width, (int)line.size());
-    }
-    
-    vertex->width = width;
-    vertex->height = lines.size();
-    
-    // Second pass: build the map with consistent width
-    for (int y = 0; y < lines.size(); y++)
-    {
-        for (int x = 0; x < width; x++)
+
+        for (int x = 0; x < line.size(); x++)
         {
-            char c = (x < lines[y].size()) ? lines[y][x] : ' ';
+            char c = line[x];
             vertex->m.push_back(c);
             if (c == 'o' || c == 'O' || c == '!')
             {
                 vertex->player_loc = y * width + x;
             }
         }
+        y++;
     }
+    vertex->width = width;
+    vertex->height = y;
     return;
 }
 
 /*
+    try to move at the given direction (forward search)
+    return the next game state if the move is valid
+    return nullptr otherwise
+*/
+Vertex *try_push(const Vertex *cur_state, int dy, int dx, const vector<bool> &corner_deadlock_locs)
+{
+    int y = get_y_from_loc(cur_state, cur_state->player_loc);
+    int x = get_x_from_loc(cur_state, cur_state->player_loc);
+
+    int yy = y + dy;
+    int xx = x + dx;
+    int yyy = yy + dy;
+    int xxx = xx + dx;
+
+    // Check bounds for the next position
+    if (yy < 0 || yy >= cur_state->height || xx < 0 || xx >= cur_state->width)
+    {
+        return nullptr;
+    }
+
+    int next_loc = get_loc_from_xy(cur_state, xx, yy);
+    char next_tile = get_tile(cur_state, next_loc);
+
+    Vertex *next_state = new Vertex(*cur_state);
+
+    // Case 1: Move to an empty space, target, or fragile tile
+    if (next_tile == ' ' || next_tile == '.' || next_tile == '@')
+    {
+        if (next_tile == ' ')
+            next_state->m[next_loc] = 'o';
+        else if (next_tile == '.')
+            next_state->m[next_loc] = 'O';
+        else // next_tile == '@'
+            next_state->m[next_loc] = '!';
+    }
+    // Case 2: Push a box
+    else if (next_tile == 'x' || next_tile == 'X')
+    {
+        // Check bounds for the position behind the box
+        if (yyy < 0 || yyy >= cur_state->height || xxx < 0 || xxx >= cur_state->width)
+        {
+            delete next_state;
+            return nullptr;
+        }
+
+        // check if box pushed into corner deadlock position
+        if (corner_deadlock_locs[get_loc_from_xy(cur_state, xxx, yyy)])
+        {
+            delete next_state;
+            return nullptr;
+        }
+        int after_box_loc = get_loc_from_xy(cur_state, xxx, yyy);
+        char after_box_tile = get_tile(cur_state, after_box_loc);
+
+        if (after_box_tile == ' ' || after_box_tile == '.')
+        {
+            // Update tile where the box was
+            if (next_tile == 'x')
+                next_state->m[next_loc] = 'o';
+            else // next_tile == 'X'
+                next_state->m[next_loc] = 'O';
+
+            // Update tile where the box is pushed to
+            if (after_box_tile == ' ')
+                next_state->m[after_box_loc] = 'x';
+            else // after_box_tile == '.'
+                next_state->m[after_box_loc] = 'X';
+        }
+        else
+        {
+            delete next_state;
+            return nullptr;
+        }
+    }
+    else
+    {
+        delete next_state;
+        return nullptr;
+    }
+
+    // Update player's original position
+    char original_player_tile = get_tile(cur_state, cur_state->player_loc);
+    if (original_player_tile == 'o')
+        next_state->m[cur_state->player_loc] = ' ';
+    else if (original_player_tile == '!')
+        next_state->m[cur_state->player_loc] = '@';
+    else // original_player_tile == 'O'
+        next_state->m[cur_state->player_loc] = '.';
+
+    next_state->player_loc = next_loc;
+
+    return next_state;
+}
+
+/*
     try to pull a box (backward search)
-    Simulates the reverse of: player at (prev_y, prev_x) pushed box from (current_y, current_x) to (next_y, next_x)
-    In current state: player is at (current_y, current_x), no box here
-    In previous state: player was at (prev_y, prev_x), box was at (current_y, current_x)  
+    In backward search, we simulate the reverse of a push operation:
+    - Player was at position (y-dy, x-dx)
+    - There was a box at position (y+dy, x+dx)
+    - Player pushed the box to current player position
+    return the previous game state if the pull is valid
+    return nullptr otherwise
 */
 Vertex *try_pull(const Vertex *cur_state, int dy, int dx, const vector<bool> &corner_deadlock_locs)
 {
     int y = get_y_from_loc(cur_state, cur_state->player_loc);
     int x = get_x_from_loc(cur_state, cur_state->player_loc);
 
-    // Where player came from (reverse direction)
-    int prev_y = y - dy;
-    int prev_x = x - dx;
-    
-    // Where box was pushed to (forward direction) 
-    int box_dest_y = y + dy;
-    int box_dest_x = x + dx;
+    // In reverse: player was at position (y-dy, x-dx)
+    int prev_player_y = y - dy;
+    int prev_player_x = x - dx;
+
+    // The box was at position (y+dy, x+dx) before being pushed
+    int prev_box_y = y + dy;
+    int prev_box_x = x + dx;
 
     // Check bounds
-    if (prev_y < 0 || prev_y >= cur_state->height || prev_x < 0 || prev_x >= cur_state->width ||
-        box_dest_y < 0 || box_dest_y >= cur_state->height || box_dest_x < 0 || box_dest_x >= cur_state->width)
+    if (prev_player_y < 0 || prev_player_y >= cur_state->height ||
+        prev_player_x < 0 || prev_player_x >= cur_state->width ||
+        prev_box_y < 0 || prev_box_y >= cur_state->height ||
+        prev_box_x < 0 || prev_box_x >= cur_state->width)
     {
         return nullptr;
     }
 
-    int prev_loc = get_loc_from_xy(cur_state, prev_x, prev_y);
-    int box_dest_loc = get_loc_from_xy(cur_state, box_dest_x, box_dest_y);
-    
-    char prev_tile = get_tile(cur_state, prev_loc);
-    char box_dest_tile = get_tile(cur_state, box_dest_loc);
-    char current_tile = get_tile(cur_state, cur_state->player_loc);
+    int prev_player_loc = get_loc_from_xy(cur_state, prev_player_x, prev_player_y);
+    int prev_box_loc = get_loc_from_xy(cur_state, prev_box_x, prev_box_y);
 
-    // Previous position must be empty or target
-    if (prev_tile != ' ' && prev_tile != '.' && prev_tile != '@')
+    char prev_player_tile = get_tile(cur_state, prev_player_loc);
+    char prev_box_tile = get_tile(cur_state, prev_box_loc);
+    char current_player_tile = get_tile(cur_state, cur_state->player_loc);
+
+    // Previous player position must be empty or target (no box or wall)
+    if (prev_player_tile != ' ' && prev_player_tile != '.')
     {
         return nullptr;
     }
 
-    // Box destination must currently have a box
-    if (box_dest_tile != 'x' && box_dest_tile != 'X')
+    // Previous box position must be empty or target (where box was pulled from)
+    if (prev_box_tile != ' ' && prev_box_tile != '.')
     {
         return nullptr;
     }
 
-    // Current position must be empty or target (where box came from)
-    if (current_tile != 'o' && current_tile != 'O' && current_tile != '!')
-    {
-        return nullptr;
-    }
-
-    Vertex *prev_state = new Vertex(*cur_state);
-
-    // Place player at previous position
-    if (prev_tile == ' ')
-    {
-        prev_state->m[prev_loc] = 'o';
-    }
-    else if (prev_tile == '.')
-    {
-        prev_state->m[prev_loc] = 'O';
-    }
-    else // prev_tile == '@'
-    {
-        prev_state->m[prev_loc] = '!';
-    }
-
-    // Place box at current position (where it came from)
-    if (current_tile == 'o')
-    {
-        prev_state->m[cur_state->player_loc] = 'x';
-    }
-    else if (current_tile == 'O')
-    {
-        prev_state->m[cur_state->player_loc] = 'X';
-    }
-    else // current_tile == '!'
-    {
-        prev_state->m[cur_state->player_loc] = 'x'; // Box on fragile tile
-    }
-
-    // Remove box from destination (restore underlying tile)
-    if (box_dest_tile == 'x')
-    {
-        prev_state->m[box_dest_loc] = ' ';
-    }
-    else // box_dest_tile == 'X'
-    {
-        prev_state->m[box_dest_loc] = '.';
-    }
-
-    prev_state->player_loc = prev_loc;
-
-    return prev_state;
-}
-
-/*
-    try to move player without pushing a box (backward search)
-    return the previous game state if the move is valid
-    return nullptr otherwise
-*/
-Vertex *try_move(const Vertex *cur_state, int dy, int dx)
-{
-    int y = get_y_from_loc(cur_state, cur_state->player_loc);
-    int x = get_x_from_loc(cur_state, cur_state->player_loc);
-
-    // Where the player came from (opposite direction)
-    int prev_y = y + dy;
-    int prev_x = x + dx;
-
-    // Check bounds
-    if (prev_y < 0 || prev_y >= cur_state->height || 
-        prev_x < 0 || prev_x >= cur_state->width)
-    {
-        return nullptr;
-    }
-
-    int prev_loc = get_loc_from_xy(cur_state, prev_x, prev_y);
-    char prev_tile = get_tile(cur_state, prev_loc);
-    char current_tile = get_tile(cur_state, cur_state->player_loc);
-
-    // Previous position must be empty, target, or fragile tile
-    if (prev_tile != ' ' && prev_tile != '.' && prev_tile != '@')
+    // Current player position must have space for a box (player pushed a box here)
+    // But since we're going backward, there should be either a player or player on target
+    if (current_player_tile != 'o' && current_player_tile != 'O')
     {
         return nullptr;
     }
@@ -241,34 +265,36 @@ Vertex *try_move(const Vertex *cur_state, int dy, int dx)
     Vertex *prev_state = new Vertex(*cur_state);
 
     // Move player to previous position
-    if (prev_tile == ' ')
+    if (prev_player_tile == ' ')
     {
-        prev_state->m[prev_loc] = 'o';
+        prev_state->m[prev_player_loc] = 'o';
     }
-    else if (prev_tile == '.')
+    else // prev_player_tile == '.'
     {
-        prev_state->m[prev_loc] = 'O';
-    }
-    else // prev_tile == '@'
-    {
-        prev_state->m[prev_loc] = '!';
+        prev_state->m[prev_player_loc] = 'O';
     }
 
-    // Remove player from current position (restore underlying tile)
-    if (current_tile == 'o')
+    // Place box at its previous position (where it was pulled from)
+    if (prev_box_tile == ' ')
     {
-        prev_state->m[cur_state->player_loc] = ' ';
+        prev_state->m[prev_box_loc] = 'x'; // Box on empty space
     }
-    else if (current_tile == 'O')
+    else // prev_box_tile == '.'
     {
-        prev_state->m[cur_state->player_loc] = '.';
-    }
-    else // current_tile == '!'
-    {
-        prev_state->m[cur_state->player_loc] = '@';
+        prev_state->m[prev_box_loc] = 'X'; // Box on target
     }
 
-    prev_state->player_loc = prev_loc;
+    // Remove box from current player position (restore underlying tile)
+    if (current_player_tile == 'o')
+    {
+        prev_state->m[cur_state->player_loc] = ' '; // Empty space
+    }
+    else // current_player_tile == 'O'
+    {
+        prev_state->m[cur_state->player_loc] = '.'; // Target
+    }
+
+    prev_state->player_loc = prev_player_loc;
 
     return prev_state;
 }
@@ -389,136 +415,68 @@ struct StateInfo
 };
 
 // Generate all possible solved states for backward search
-vector<Vertex*> generate_solved_states(const Vertex* template_state)
+vector<Vertex *> generate_solved_states(const Vertex *template_state)
 {
-    vector<Vertex*> solved_states;
-    
-    // Find all target positions and count boxes
+    vector<Vertex *> solved_states;
+
+    // Find all target positions and count them
     vector<int> targets;
-    int box_count = 0;
-    
     for (int i = 0; i < template_state->m.size(); i++)
     {
-        char tile = template_state->m[i];
-        if (tile == '.' || tile == 'X' || tile == 'O')
+        if (template_state->m[i] == '.' || template_state->m[i] == 'X' || template_state->m[i] == 'O')
         {
             targets.push_back(i);
         }
-        if (tile == 'x' || tile == 'X')
-        {
-            box_count++;
-        }
     }
-    
-    // cerr << "Found " << targets.size() << " targets and " << box_count << " boxes" << endl;
-    // cerr << "Target positions: ";
-    // for (int target : targets) {
-    //     cerr << target << " ";
-    // }
-    // cerr << endl;
-    
-    // Only generate solved states if we have enough targets for all boxes
-    if (targets.size() < box_count)
+
+    // Generate solved states with different player positions
+    // But we need to be more careful - only generate valid reachable positions
+    for (int player_pos = 0; player_pos < template_state->m.size(); player_pos++)
     {
-        cerr << "Error: Not enough targets (" << targets.size() << ") for boxes (" << box_count << ")" << endl;
-        return solved_states;
-    }
-    
-    // Generate solved states with all boxes on targets and player in different positions
-    vector<int> valid_player_positions;
-    
-    for (int i = 0; i < template_state->m.size(); i++)
-    {
-        char tile = template_state->m[i];
-        // Player can only be on non-wall, non-target positions, or on targets if we have extras
-        if (tile == ' ' || tile == 'o' || tile == '@' || tile == '!')
+        char tile = template_state->m[player_pos];
+        // Player can be on empty space, target, or original player position
+        if (tile == ' ' || tile == '.' || tile == 'o' || tile == 'O' || tile == 'x')
         {
-            valid_player_positions.push_back(i);
-        }
-        // Can also be on targets if we have more targets than boxes
-        else if ((tile == '.' || tile == 'O') && (int)targets.size() > box_count)
-        {
-            valid_player_positions.push_back(i);
-        }
-    }
-    
-    for (int player_pos : valid_player_positions)
-    {
-        Vertex* solved = new Vertex(*template_state);
-        
-        // Start with the template and modify it
-        for (int i = 0; i < solved->m.size(); i++)
-        {
-            char orig_tile = template_state->m[i];
-            if (orig_tile == '#' || orig_tile == '@')
+            Vertex *solved = new Vertex(*template_state);
+
+            // First, create base solved state: all targets have boxes
+            for (int i = 0; i < solved->m.size(); i++)
             {
-                solved->m[i] = orig_tile; // Keep walls and fragile tiles
-            }
-            else if (orig_tile == '.' || orig_tile == 'X' || orig_tile == 'O')
-            {
-                solved->m[i] = '.'; // Reset all targets to empty targets first
-            }
-            else if (orig_tile == 'x' || orig_tile == 'o')
-            {
-                solved->m[i] = ' '; // Clear boxes and player
-            }
-            else
-            {
-                solved->m[i] = ' '; // Clear everything else
-            }
-        }
-        
-        // Place exactly 'box_count' boxes on the first 'box_count' targets
-        int boxes_placed = 0;
-        for (int target_idx = 0; target_idx < targets.size() && boxes_placed < box_count; target_idx++)
-        {
-            int target_pos = targets[target_idx];
-            if (target_pos != player_pos) // Don't place box where player will be
-            {
-                solved->m[target_pos] = 'X'; // Box on target
-                boxes_placed++;
-            }
-        }
-        
-        // If we couldn't place all boxes (because player occupied a target), skip
-        if (boxes_placed < box_count)
-        {
-            delete solved;
-            continue;
-        }
-        
-        // Place player
-        char player_tile = solved->m[player_pos];
-        if (player_tile == ' ')
-        {
-            solved->m[player_pos] = 'o';
-        }
-        else if (player_tile == '.')
-        {
-            solved->m[player_pos] = 'O';
-        }
-        else if (player_tile == '@')
-        {
-            solved->m[player_pos] = '!';
-        }
-        
-        solved->player_loc = player_pos;
-        
-        // Verify this is a valid solved state
-        if (is_solved(solved))
-        {
-            // Check if we already have an equivalent state
-            bool duplicate = false;
-            for (const auto* existing : solved_states)
-            {
-                if (existing->m == solved->m)
+                char orig_tile = template_state->m[i];
+
+                if (orig_tile == '#' || orig_tile == '@') // Keep walls and fragile tiles
                 {
-                    duplicate = true;
-                    break;
+                    solved->m[i] = orig_tile;
+                }
+                else if (orig_tile == '.' || orig_tile == 'X' || orig_tile == 'O')
+                {
+                    // This is a target position
+                    if (i == player_pos)
+                    {
+                        solved->m[i] = 'O'; // Player on target (no box here for this configuration)
+                    }
+                    else
+                    {
+                        solved->m[i] = 'X'; // Box on target
+                    }
+                }
+                else // Empty space, box not on target, or player not on target
+                {
+                    if (i == player_pos)
+                    {
+                        solved->m[i] = 'o'; // Player on empty space
+                    }
+                    else
+                    {
+                        solved->m[i] = ' '; // Empty space
+                    }
                 }
             }
-            
-            if (!duplicate)
+
+            solved->player_loc = player_pos;
+
+            // Only add if this creates a valid solved state
+            if (is_solved(solved))
             {
                 solved_states.push_back(solved);
             }
@@ -527,30 +485,73 @@ vector<Vertex*> generate_solved_states(const Vertex* template_state)
                 delete solved;
             }
         }
+    }
+
+    // If no solved states generated, try a simpler approach
+    if (solved_states.empty())
+    {
+        // Create one basic solved state with all boxes on targets
+        Vertex *solved = new Vertex(*template_state);
+
+        // Place all boxes on targets, player on first available space
+        int player_placed = false;
+        for (int i = 0; i < solved->m.size(); i++)
+        {
+            char orig_tile = template_state->m[i];
+
+            if (orig_tile == '#' || orig_tile == '@')
+            {
+                solved->m[i] = orig_tile;
+            }
+            else if (orig_tile == '.' || orig_tile == 'X' || orig_tile == 'O')
+            {
+                solved->m[i] = 'X'; // Box on target
+            }
+            else if (!player_placed && (orig_tile == ' ' || orig_tile == 'o'))
+            {
+                solved->m[i] = 'o'; // Place player
+                solved->player_loc = i;
+                player_placed = true;
+            }
+            else
+            {
+                solved->m[i] = ' '; // Empty space
+            }
+        }
+
+        if (player_placed && is_solved(solved))
+        {
+            solved_states.push_back(solved);
+        }
         else
         {
             delete solved;
         }
     }
-    
+
     return solved_states;
 }
 
-bool states_equal(const Vertex* a, const Vertex* b)
+bool states_equal(const Vertex *a, const Vertex *b)
 {
-    return a->m == b->m && a->player_loc == b->player_loc;
+    return a->m == b->m;
 }
 
 // Reverse move mapping for path reconstruction
 char reverse_move(char move)
 {
-    switch(move)
+    switch (move)
     {
-        case 'W': return 'S';
-        case 'S': return 'W';
-        case 'A': return 'D';
-        case 'D': return 'A';
-        default: return move;
+    case 'W':
+        return 'S';
+    case 'S':
+        return 'W';
+    case 'A':
+        return 'D';
+    case 'D':
+        return 'A';
+    default:
+        return move;
     }
 }
 
@@ -559,15 +560,6 @@ char reverse_move(char move)
 */
 void solve_backward_bfs(Vertex *start_node)
 {
-    // cerr << "Initial state:" << endl;
-    // for (int y = 0; y < start_node->height; y++) {
-    //     for (int x = 0; x < start_node->width; x++) {
-    //         cerr << start_node->m[y * start_node->width + x];
-    //     }
-    //     cerr << endl;
-    // }
-    // cerr << "Player at: " << start_node->player_loc << endl;
-
     vector<Vertex *> current_level;
     vector<Vertex *> next_level;
 
@@ -590,24 +582,10 @@ void solve_backward_bfs(Vertex *start_node)
     vector<Vertex *> allocated_vertices;
 
     // Generate all possible solved states
-    vector<Vertex*> solved_states = generate_solved_states(start_node);
-    
-    // cerr << "Generated " << solved_states.size() << " solved states" << endl;
-    
-    // if (!solved_states.empty()) {
-    //     cerr << "First solved state:" << endl;
-    //     auto* first_solved = solved_states[0];
-    //     for (int y = 0; y < first_solved->height; y++) {
-    //         for (int x = 0; x < first_solved->width; x++) {
-    //             cerr << first_solved->m[y * first_solved->width + x];
-    //         }
-    //         cerr << endl;
-    //     }
-    //     cerr << "Player at: " << first_solved->player_loc << endl;
-    // }
-    
+    vector<Vertex *> solved_states = generate_solved_states(start_node);
+
     // Initialize with solved states
-    for (auto* solved : solved_states)
+    for (auto *solved : solved_states)
     {
         current_level.push_back(solved);
         visited[solved->m] = StateInfo(nullptr, 0);
@@ -616,12 +594,9 @@ void solve_backward_bfs(Vertex *start_node)
 
     bool found = false;
     Vertex *solution_state = nullptr;
-    int iteration = 0;
-    const int MAX_ITERATIONS = 25; // Increase search depth
 
-    while (!current_level.empty() && !found && iteration < MAX_ITERATIONS)
+    while (!current_level.empty() && !found)
     {
-        // cerr << "Iteration " << iteration++ << ", exploring " << current_level.size() << " states" << endl;
         next_level.clear();
 
         vector<vector<Vertex *>> thread_local_states(omp_get_max_threads());
@@ -637,7 +612,7 @@ void solve_backward_bfs(Vertex *start_node)
                 Vertex *current_v = current_level[i];
 
                 // Check if we reached the start state
-                if (current_v->m == start_node->m && current_v->player_loc == start_node->player_loc)
+                if (states_equal(current_v, start_node))
                 {
 #pragma omp critical
                     {
@@ -649,53 +624,11 @@ void solve_backward_bfs(Vertex *start_node)
                     }
                     continue;
                 }
-                
-                // Debug: check if we're close to start state
-                int diff_count = 0;
-                vector<int> diff_positions;
-                for (int k = 0; k < current_v->m.size(); k++) {
-                    if (current_v->m[k] != start_node->m[k]) {
-                        diff_count++;
-                        diff_positions.push_back(k);
-                    }
-                }
-                if (diff_count == 2 && diff_positions.size() == 2 && 
-                    diff_positions[0] == 15 && diff_positions[1] == 16) {
-#pragma omp critical
-                    {
-                        cerr << "Testing moves from the close state..." << endl;
-                        for (auto const &[dir_str, move] : DYDX) {
-                            Vertex *test_pull = try_pull(current_v, move.first, move.second, corner_deadlock_locs);
-                            Vertex *test_move = try_move(current_v, move.first, move.second);
-                            cerr << "Direction " << dir_str << ": pull=" << (test_pull ? "OK" : "NULL") 
-                                 << " move=" << (test_move ? "OK" : "NULL") << endl;
-                            if (test_pull) delete test_pull;
-                            if (test_move) delete test_move;
-                        }
-                    }
-                }
 
-                // Try all reverse moves (pulling boxes and simple moves)
+                // Try all reverse moves (pulling boxes)
                 for (auto const &[dir_str, move] : DYDX)
                 {
-                    // Try pulling a box
                     Vertex *prev_state = try_pull(current_v, move.first, move.second, corner_deadlock_locs);
-                    if (prev_state)
-                    {
-                        if (!is_deadlock_state(prev_state, corner_deadlock_locs))
-                        {
-                            thread_local_states[thread_id].push_back(prev_state);
-                            thread_local_visited[thread_id].emplace_back(
-                                prev_state->m, StateInfo(current_v, dir_str[0]));
-                        }
-                        else
-                        {
-                            delete prev_state;
-                        }
-                    }
-                    
-                    // Try simple move (no box)
-                    prev_state = try_move(current_v, move.first, move.second);
                     if (prev_state)
                     {
                         if (!is_deadlock_state(prev_state, corner_deadlock_locs))
@@ -739,14 +672,14 @@ void solve_backward_bfs(Vertex *start_node)
 
     if (found)
     {
-        // Reconstruct path by reversing both order and direction
+        // Reconstruct path (need to reverse it since we went backward)
         string path = "";
         vector<char> current_state_vec = solution_state->m;
 
         while (visited[current_state_vec].parent != nullptr)
         {
             char move = visited[current_state_vec].move;
-            path = reverse_move(move) + path; // Reverse direction and prepend
+            path = reverse_move(move) + path; // Reverse the move and prepend
             current_state_vec = visited[current_state_vec].parent->m;
         }
 
