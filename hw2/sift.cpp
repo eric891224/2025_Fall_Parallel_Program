@@ -24,12 +24,16 @@ ScaleSpacePyramid generate_gaussian_pyramid(const Image &img, float sigma_min,
 
     // determine sigma values for bluring
     float k = std::pow(2, 1.0 / scales_per_octave);
-    std::vector<float> sigma_vals{base_sigma};
+    // std::vector<float> sigma_vals{base_sigma};
+    std::vector<float> sigma_vals(imgs_per_octave);
+    sigma_vals[0] = base_sigma;
+#pragma omp parallel for
     for (int i = 1; i < imgs_per_octave; i++)
     {
         float sigma_prev = base_sigma * std::pow(k, i - 1);
         float sigma_total = k * sigma_prev;
-        sigma_vals.push_back(std::sqrt(sigma_total * sigma_total - sigma_prev * sigma_prev));
+        sigma_vals[i] = std::sqrt(sigma_total * sigma_total - sigma_prev * sigma_prev);
+        // sigma_vals.push_back(std::sqrt(sigma_total * sigma_total - sigma_prev * sigma_prev));
     }
 
     // create a scale space pyramid of gaussian images
@@ -38,6 +42,26 @@ ScaleSpacePyramid generate_gaussian_pyramid(const Image &img, float sigma_min,
         num_octaves,
         imgs_per_octave,
         std::vector<std::vector<Image>>(num_octaves)};
+
+    /* parallelized section */
+    //     for (int i = 0; i < num_octaves; i++)
+    //     {
+    //         pyramid.octaves[i].resize(imgs_per_octave);
+    //         pyramid.octaves[i][0] = std::move(base_img);
+
+    // // Parallelize the blur operations within each octave
+    // #pragma omp parallel for
+    //         for (int j = 1; j < sigma_vals.size(); j++)
+    //         {
+    //             pyramid.octaves[i][j] = gaussian_blur(pyramid.octaves[i][0], sigma_vals[j]);
+    //         }
+    //         // prepare base image for next octave
+    //         const Image &next_base_img = pyramid.octaves[i][imgs_per_octave - 3];
+    //         base_img = next_base_img.resize(next_base_img.width / 2, next_base_img.height / 2,
+    //                                         Interpolation::NEAREST);
+    //     }
+
+    /* original serial section */
     for (int i = 0; i < num_octaves; i++)
     {
         pyramid.octaves[i].reserve(imgs_per_octave);
@@ -541,7 +565,7 @@ std::vector<Keypoint> find_keypoints_and_descriptors(const Image &img, float sig
 
     kps.resize(kp_theta_pairs.size());
 
-// Parallelize descriptor computation across keypoints
+// // Parallelize descriptor computation across keypoints
 #pragma omp parallel for
     for (size_t i = 0; i < kp_theta_pairs.size(); i++)
     {

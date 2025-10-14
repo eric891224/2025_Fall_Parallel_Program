@@ -233,6 +233,7 @@ Image rgb_to_grayscale(const Image &img)
 {
     assert(img.channels == 3);
     Image gray(img.width, img.height, 1);
+#pragma omp parallel for collapse(2)
     for (int x = 0; x < img.width; x++)
     {
         for (int y = 0; y < img.height; y++)
