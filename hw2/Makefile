@@ -5,7 +5,7 @@ MPIFLAGS = -std=c++17 -O3 -fopenmp
 INCLUDES = -I.
 
 # Source files
-SOURCES = hw2.cpp sift.cpp image.cpp
+SOURCES = hw2.cpp sift.cpp image.cpp dist.cpp
 OBJECTS = $(SOURCES:.cpp=.o)
 TARGET = hw2
 
@@ -28,6 +28,9 @@ sift.o: sift.cpp sift.hpp image.hpp $(STB_HEADERS)
 
 image.o: image.cpp image.hpp $(STB_HEADERS)
 	$(MPICXX) $(MPIFLAGS) $(INCLUDES) -c image.cpp
+
+dist.o: dist.cpp dist.hpp sift.hpp
+	$(MPICXX) $(MPIFLAGS) $(INCLUDES) -c dist.cpp
 
 # Clean up build artifacts
 clean:
