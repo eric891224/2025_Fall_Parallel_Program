@@ -2,6 +2,8 @@
 #include <iostream>
 #include <cassert>
 #include <utility>
+#include <vector>
+#include <mpi.h>
 
 #include <omp.h>
 
@@ -265,9 +267,60 @@ Image grayscale_to_rgb(const Image &img)
     return rgb;
 }
 
-// separable 2D gaussian blur for 1 channel image
+/* original gaussian_blur */
+// Image gaussian_blur(const Image& img, float sigma)
+// {
+//     assert(img.channels == 1);
+
+//     int size = std::ceil(6 * sigma);
+//     if (size % 2 == 0)
+//         size++;
+//     int center = size / 2;
+//     Image kernel(size, 1, 1);
+//     float sum = 0;
+//     for (int k = -size/2; k <= size/2; k++) {
+//         float val = std::exp(-(k*k) / (2*sigma*sigma));
+//         kernel.set_pixel(center+k, 0, 0, val);
+//         sum += val;
+//     }
+//     for (int k = 0; k < size; k++)
+//         kernel.data[k] /= sum;
+
+//     Image tmp(img.width, img.height, 1);
+//     Image filtered(img.width, img.height, 1);
+
+//     // convolve vertical
+//     for (int x = 0; x < img.width; x++) {
+//         for (int y = 0; y < img.height; y++) {
+//             float sum = 0;
+//             for (int k = 0; k < size; k++) {
+//                 int dy = -center + k;
+//                 sum += img.get_pixel(x, y+dy, 0) * kernel.data[k];
+//             }
+//             tmp.set_pixel(x, y, 0, sum);
+//         }
+//     }
+//     // convolve horizontal
+//     for (int x = 0; x < img.width; x++) {
+//         for (int y = 0; y < img.height; y++) {
+//             float sum = 0;
+//             for (int k = 0; k < size; k++) {
+//                 int dx = -center + k;
+//                 sum += tmp.get_pixel(x+dx, y, 0) * kernel.data[k];
+//             }
+//             filtered.set_pixel(x, y, 0, sum);
+//         }
+//     }
+//     return filtered;
+// }
+
+/* parallelized gaussian_blur */
 Image gaussian_blur(const Image &img, float sigma)
 {
+    int rank = 0, world_size = 1;
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    MPI_Comm_size(MPI_COMM_WORLD, &world_size);
+
     assert(img.channels == 1);
 
     int size = std::ceil(6 * sigma);
@@ -288,9 +341,14 @@ Image gaussian_blur(const Image &img, float sigma)
     Image tmp(img.width, img.height, 1);
     Image filtered(img.width, img.height, 1);
 
-// convolve vertical
-#pragma omp parallel for collapse(2)
-    for (int x = 0; x < img.width; x++)
+    // Distribute work by x-coordinate
+    int local_width = img.width / world_size;
+    int start_x = rank * local_width;
+    int end_x = (rank == world_size - 1) ? img.width : start_x + local_width;
+
+    // Vertical convolution - each process handles its x-range
+    #pragma omp parallel for collapse(2)
+    for (int x = start_x; x < end_x; x++)
     {
         for (int y = 0; y < img.height; y++)
         {
@@ -303,9 +361,14 @@ Image gaussian_blur(const Image &img, float sigma)
             tmp.set_pixel(x, y, 0, sum);
         }
     }
-// convolve horizontal
-#pragma omp parallel for collapse(2)
-    for (int x = 0; x < img.width; x++)
+
+    // Synchronize - all processes need tmp to be complete
+    // MPI_Barrier(MPI_COMM_WORLD);
+    MPI_Allreduce(MPI_IN_PLACE, tmp.data, tmp.size, MPI_FLOAT, MPI_SUM, MPI_COMM_WORLD);
+
+    // Horizontal convolution - each process handles its x-range
+    #pragma omp parallel for collapse(2)
+    for (int x = start_x; x < end_x; x++)
     {
         for (int y = 0; y < img.height; y++)
         {
@@ -318,6 +381,11 @@ Image gaussian_blur(const Image &img, float sigma)
             filtered.set_pixel(x, y, 0, sum);
         }
     }
+
+    // Final synchronization
+    // MPI_Barrier(MPI_COMM_WORLD);
+    MPI_Allreduce(MPI_IN_PLACE, filtered.data, filtered.size, MPI_FLOAT, MPI_SUM, MPI_COMM_WORLD);
+
     return filtered;
 }
 
