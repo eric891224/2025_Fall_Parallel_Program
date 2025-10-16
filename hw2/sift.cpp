@@ -394,7 +394,7 @@ MPI_Datatype create_keypoint_mpi_type()
 //     return keypoints;
 // }
 
-/* parallelized find_keypoints implementation, has bugs */
+/* parallelized find_keypoints implementation */
 std::vector<Keypoint> find_keypoints(const ScaleSpacePyramid &dog_pyramid, float contrast_thresh,
                                      float edge_thresh)
 {
@@ -421,11 +421,11 @@ std::vector<Keypoint> find_keypoints(const ScaleSpacePyramid &dog_pyramid, float
             int end_x = (rank == size - 1) ? img.width - 1 : start_x + local_width;
             local_width = end_x - start_x;
 
-// #pragma omp parallel
+#pragma omp parallel
             {
-                // std::vector<Keypoint> thread_local_keypoints;
+                std::vector<Keypoint> thread_local_keypoints;
 // for (int x = 1; x < img.width - 1; x++)
-// #pragma omp for
+#pragma omp for
                 for (int x = start_x; x < end_x; x++)
                 {
                     for (int y = 1; y < img.height - 1; y++)
@@ -443,20 +443,20 @@ std::vector<Keypoint> find_keypoints(const ScaleSpacePyramid &dog_pyramid, float
                             {
                                 // keypoints.push_back(kp);
                                 // #pragma omp critical
-                                local_keypoints.push_back(kp);
-                                // thread_local_keypoints.push_back(kp);
+                                // local_keypoints.push_back(kp);
+                                thread_local_keypoints.push_back(kp);
                             }
                         }
                     }
                 }
 
 // Merge thread-local keypoints into the local keypoints vector
-// #pragma omp critical
-//                 {
-//                     local_keypoints.insert(local_keypoints.end(),
-//                                            thread_local_keypoints.begin(),
-//                                            thread_local_keypoints.end());
-//                 }
+#pragma omp critical
+                {
+                    local_keypoints.insert(local_keypoints.end(),
+                                           thread_local_keypoints.begin(),
+                                           thread_local_keypoints.end());
+                }
             }
         }
 
@@ -491,133 +491,125 @@ std::vector<Keypoint> find_keypoints(const ScaleSpacePyramid &dog_pyramid, float
 }
 
 /* original generate_gradient_pyramid */
-ScaleSpacePyramid generate_gradient_pyramid(const ScaleSpacePyramid& pyramid)
-{
-    ScaleSpacePyramid grad_pyramid = {
-        pyramid.num_octaves,
-        pyramid.imgs_per_octave,
-        std::vector<std::vector<Image>>(pyramid.num_octaves)
-    };
-    for (int i = 0; i < pyramid.num_octaves; i++) {
-        grad_pyramid.octaves[i].reserve(grad_pyramid.imgs_per_octave);
-        int width = pyramid.octaves[i][0].width;
-        int height = pyramid.octaves[i][0].height;
-        for (int j = 0; j < pyramid.imgs_per_octave; j++) {
-            Image grad(width, height, 2);
-            float gx, gy;
-            for (int x = 1; x < grad.width-1; x++) {
-                for (int y = 1; y < grad.height-1; y++) {
-                    gx = (pyramid.octaves[i][j].get_pixel(x+1, y, 0)
-                         -pyramid.octaves[i][j].get_pixel(x-1, y, 0)) * 0.5;
-                    grad.set_pixel(x, y, 0, gx);
-                    gy = (pyramid.octaves[i][j].get_pixel(x, y+1, 0)
-                         -pyramid.octaves[i][j].get_pixel(x, y-1, 0)) * 0.5;
-                    grad.set_pixel(x, y, 1, gy);
-                }
-            }
-            grad_pyramid.octaves[i].push_back(grad);
-        }
-    }
-    return grad_pyramid;
-}
-
-/* parallelized generate_gradient_pyramid */
-// calculate x and y derivatives for all images in the input pyramid
-// ScaleSpacePyramid generate_gradient_pyramid(const ScaleSpacePyramid &pyramid)
+// ScaleSpacePyramid generate_gradient_pyramid(const ScaleSpacePyramid& pyramid)
 // {
-//     // MPI
-//     int rank = 0, size = 1;
-//     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-//     MPI_Comm_size(MPI_COMM_WORLD, &size);
-
 //     ScaleSpacePyramid grad_pyramid = {
 //         pyramid.num_octaves,
 //         pyramid.imgs_per_octave,
-//         std::vector<std::vector<Image>>(pyramid.num_octaves)};
-
-//     // preallocate space
-//     for (int i = 0; i < pyramid.num_octaves; i++)
-//     {
-//         grad_pyramid.octaves[i].reserve(pyramid.imgs_per_octave);
+//         std::vector<std::vector<Image>>(pyramid.num_octaves)
+//     };
+//     for (int i = 0; i < pyramid.num_octaves; i++) {
+//         grad_pyramid.octaves[i].reserve(grad_pyramid.imgs_per_octave);
 //         int width = pyramid.octaves[i][0].width;
 //         int height = pyramid.octaves[i][0].height;
-//         for (int j = 0; j < pyramid.imgs_per_octave; j++)
-//         {
-//             grad_pyramid.octaves[i].emplace_back(width, height, 2);
-//         }
-
-//         // compute gradients across processes
-//         // #pragma omp parallel for collapse(3)
-//         for (int j = 0; j < pyramid.imgs_per_octave; j++)
-//         {
-//             // prepare for AllGatherv
-//             // std::vector<int> recv_counts(size, 0);
-//             // std::vector<int> displs(size, 0);
-//             // for (int p = 0; p < size; p++)
-//             // {
-//             //     int local_width = width / size;
-//             //     displs[p] = p * local_width * height * 2;
-//             //     if (p == size - 1)
-//             //         local_width += width % size;
-//             //     recv_counts[p] = local_width * height * 2;
-//             // }
-//             // int local_width = width / size;
-//             // int x_start = (rank == 0) ? 1 : rank * local_width;
-//             // int x_end = (rank == size - 1) ? width - 1 : x_start + local_width;
-//             // local_width = x_end - x_start;
-
-//             // Image local_grad(local_width, height, 2);
-
-//             #pragma omp parallel for collapse(2)
-//             for (int x = 1; x < width - 1; x++)
-//             // #pragma omp parallel for collapse(2)
-//             // for (int x = x_start; x < x_end; x++)
-//             {
-//                 for (int y = 1; y < height - 1; y++)
-//                 {
-//                     float gx = (pyramid.octaves[i][j].get_pixel(x + 1, y, 0) - pyramid.octaves[i][j].get_pixel(x - 1, y, 0)) * 0.5;
-//                     float gy = (pyramid.octaves[i][j].get_pixel(x, y + 1, 0) - pyramid.octaves[i][j].get_pixel(x, y - 1, 0)) * 0.5;
-//                     grad_pyramid.octaves[i][j].set_pixel(x, y, 0, gx);
-//                     grad_pyramid.octaves[i][j].set_pixel(x, y, 1, gy);
-//                     // local_grad.set_pixel(x - x_start, y, 0, gx);
-//                     // local_grad.set_pixel(x - x_start, y, 1, gy);
+//         for (int j = 0; j < pyramid.imgs_per_octave; j++) {
+//             Image grad(width, height, 2);
+//             float gx, gy;
+//             for (int x = 1; x < grad.width-1; x++) {
+//                 for (int y = 1; y < grad.height-1; y++) {
+//                     gx = (pyramid.octaves[i][j].get_pixel(x+1, y, 0)
+//                          -pyramid.octaves[i][j].get_pixel(x-1, y, 0)) * 0.5;
+//                     grad.set_pixel(x, y, 0, gx);
+//                     gy = (pyramid.octaves[i][j].get_pixel(x, y+1, 0)
+//                          -pyramid.octaves[i][j].get_pixel(x, y-1, 0)) * 0.5;
+//                     grad.set_pixel(x, y, 1, gy);
 //                 }
 //             }
-
-//             // AllGatherv grad results
-//             // MPI_Allgatherv(local_grad.data, local_grad.size, MPI_FLOAT,
-//             //                grad_pyramid.octaves[i][j].data, recv_counts.data(), displs.data(), MPI_FLOAT,
-//             //                MPI_COMM_WORLD);
+//             grad_pyramid.octaves[i].push_back(grad);
 //         }
 //     }
-
-//     /* original serial version */
-//     // for (int i = 0; i < pyramid.num_octaves; i++)
-//     // {
-//     //     grad_pyramid.octaves[i].reserve(grad_pyramid.imgs_per_octave);
-//     //     int width = pyramid.octaves[i][0].width;
-//     //     int height = pyramid.octaves[i][0].height;
-//     //     for (int j = 0; j < pyramid.imgs_per_octave; j++)
-//     //     {
-//     //         Image grad(width, height, 2);
-//     //         float gx, gy;
-//     //         for (int x = 1; x < grad.width - 1; x++)
-//     //         {
-//     //             for (int y = 1; y < grad.height - 1; y++)
-//     //             {
-//     //                 gx = (pyramid.octaves[i][j].get_pixel(x + 1, y, 0) - pyramid.octaves[i][j].get_pixel(x - 1, y, 0)) * 0.5;
-//     //                 grad.set_pixel(x, y, 0, gx);
-//     //                 gy = (pyramid.octaves[i][j].get_pixel(x, y + 1, 0) - pyramid.octaves[i][j].get_pixel(x, y - 1, 0)) * 0.5;
-//     //                 grad.set_pixel(x, y, 1, gy);
-//     //             }
-//     //         }
-//     //         grad_pyramid.octaves[i].push_back(grad);
-//     //     }
-//     // }
-
-//     // allgather_gradient_pyramid(grad_pyramid);
 //     return grad_pyramid;
 // }
+
+/* parallelized generate_gradient_pyramid */
+// calculate x and y derivatives for all images in the input pyramid
+ScaleSpacePyramid generate_gradient_pyramid(const ScaleSpacePyramid &pyramid)
+{
+    // MPI
+    int rank = 0, size = 1;
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    MPI_Comm_size(MPI_COMM_WORLD, &size);
+
+    ScaleSpacePyramid grad_pyramid = {
+        pyramid.num_octaves,
+        pyramid.imgs_per_octave,
+        std::vector<std::vector<Image>>(pyramid.num_octaves)};
+
+    // std::vector<MPI_Request> requests(pyramid.imgs_per_octave);
+    
+    // preallocate space
+    for (int i = 0; i < pyramid.num_octaves; i++)
+    {
+        grad_pyramid.octaves[i].reserve(pyramid.imgs_per_octave);
+        int width = pyramid.octaves[i][0].width;
+        int height = pyramid.octaves[i][0].height;
+        for (int j = 0; j < pyramid.imgs_per_octave; j++)
+        {
+            grad_pyramid.octaves[i].emplace_back(width, height, 2);
+        }
+
+        // compute gradients across processes
+        // #pragma omp parallel for collapse(3)
+        for (int j = 0; j < pyramid.imgs_per_octave; j++)
+        {
+            // prepare for AllReduce
+            int local_width = width / size;
+            int x_start = 1 + rank * local_width;
+            int x_end = (rank == size - 1) ? width - 1 : x_start + local_width;
+            local_width = x_end - x_start;
+
+
+            // #pragma omp parallel for collapse(2)
+            // for (int x = 1; x < width - 1; x++)
+            #pragma omp parallel for collapse(2)
+            for (int x = x_start; x < x_end; x++)
+            {
+                for (int y = 1; y < height - 1; y++)
+                {
+                    float gx = (pyramid.octaves[i][j].get_pixel(x + 1, y, 0) - pyramid.octaves[i][j].get_pixel(x - 1, y, 0)) * 0.5;
+                    float gy = (pyramid.octaves[i][j].get_pixel(x, y + 1, 0) - pyramid.octaves[i][j].get_pixel(x, y - 1, 0)) * 0.5;
+                    grad_pyramid.octaves[i][j].set_pixel(x, y, 0, gx);
+                    grad_pyramid.octaves[i][j].set_pixel(x, y, 1, gy);
+                }
+            }
+
+            // AllReduce grad results
+            MPI_Allreduce(MPI_IN_PLACE, grad_pyramid.octaves[i][j].data, grad_pyramid.octaves[i][j].size, MPI_FLOAT, MPI_SUM, MPI_COMM_WORLD);
+            // MPI_Iallreduce(MPI_IN_PLACE, grad_pyramid.octaves[i][j].data, 
+            //               grad_pyramid.octaves[i][j].size, MPI_FLOAT, MPI_SUM, 
+            //               MPI_COMM_WORLD, &requests[j]);
+        }
+    }
+
+    // Wait for all non-blocking operations to complete
+    // MPI_Waitall(requests.size(), requests.data(), MPI_STATUSES_IGNORE);
+
+    /* original serial version */
+    // for (int i = 0; i < pyramid.num_octaves; i++)
+    // {
+    //     grad_pyramid.octaves[i].reserve(grad_pyramid.imgs_per_octave);
+    //     int width = pyramid.octaves[i][0].width;
+    //     int height = pyramid.octaves[i][0].height;
+    //     for (int j = 0; j < pyramid.imgs_per_octave; j++)
+    //     {
+    //         Image grad(width, height, 2);
+    //         float gx, gy;
+    //         for (int x = 1; x < grad.width - 1; x++)
+    //         {
+    //             for (int y = 1; y < grad.height - 1; y++)
+    //             {
+    //                 gx = (pyramid.octaves[i][j].get_pixel(x + 1, y, 0) - pyramid.octaves[i][j].get_pixel(x - 1, y, 0)) * 0.5;
+    //                 grad.set_pixel(x, y, 0, gx);
+    //                 gy = (pyramid.octaves[i][j].get_pixel(x, y + 1, 0) - pyramid.octaves[i][j].get_pixel(x, y - 1, 0)) * 0.5;
+    //                 grad.set_pixel(x, y, 1, gy);
+    //             }
+    //         }
+    //         grad_pyramid.octaves[i].push_back(grad);
+    //     }
+    // }
+
+    return grad_pyramid;
+}
 
 // convolve 6x with box filter
 void smooth_histogram(float hist[N_BINS])
@@ -664,6 +656,7 @@ std::vector<float> find_keypoint_orientations(Keypoint &kp,
     int y_end = std::round((kp.y + patch_radius) / pix_dist);
 
     // accumulate gradients in orientation histogram
+    // #pragma omp parallel for collapse(2)
     for (int x = x_start; x <= x_end; x++)
     {
         for (int y = y_start; y <= y_end; y++)
