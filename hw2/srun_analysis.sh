@@ -81,7 +81,7 @@ done
 # ===================================
 echo -e "\n[Test 5] Weak Scaling - Scale Problem and Resources Together"
 # Use different test cases if available, or same test case with different process counts
-test_cases=(01 01 01 01)  # Replace with larger test cases if available
+test_cases=(01 02 04 08)  # Replace with larger test cases if available
 process_counts=(1 2 4 8)
 
 for i in ${!process_counts[@]}; do
