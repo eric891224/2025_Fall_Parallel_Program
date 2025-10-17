@@ -828,31 +828,60 @@ void compute_keypoint_descriptor(Keypoint &kp, float theta,
 
     float cos_t = std::cos(theta), sin_t = std::sin(theta);
     float patch_sigma = lambda_desc * kp.sigma;
+    float hist_bin_factor = lambda_desc * (N_HIST + 1.) / N_HIST;
     // accumulate samples into histograms
     // #pragma omp parallel for// collapse(2)
-    for (int m = x_start; m <= x_end; m++)
+
+    // Thread-local histogram to avoid race conditions
+    // #pragma omp parallel
     {
-        for (int n = y_start; n <= y_end; n++)
+        // float local_hist[N_HIST][N_HIST][N_ORI] = {0};
+
+        #pragma omp parallel for collapse(2) reduction(+:histograms[:N_HIST][:N_HIST][:N_ORI])
+        for (int m = x_start; m <= x_end; m++)
         {
-            // find normalized coords w.r.t. kp position and reference orientation
-            float x = ((m * pix_dist - kp.x) * cos_t + (n * pix_dist - kp.y) * sin_t) / kp.sigma;
-            float y = (-(m * pix_dist - kp.x) * sin_t + (n * pix_dist - kp.y) * cos_t) / kp.sigma;
+            for (int n = y_start; n <= y_end; n++)
+            {
+                // Precompute pixel position differences
+                float dx = m * pix_dist - kp.x;
+                float dy = n * pix_dist - kp.y;
 
-            // verify (x, y) is inside the description patch
-            if (std::max(std::abs(x), std::abs(y)) > lambda_desc * (N_HIST + 1.) / N_HIST)
-                continue;
+                // find normalized coords w.r.t. kp position and reference orientation
+                // float x = ((m * pix_dist - kp.x) * cos_t + (n * pix_dist - kp.y) * sin_t) / kp.sigma;
+                // float y = (-(m * pix_dist - kp.x) * sin_t + (n * pix_dist - kp.y) * cos_t) / kp.sigma;
+                float x = (dx * cos_t + dy * sin_t) / kp.sigma;
+                float y = (-dx * sin_t + dy * cos_t) / kp.sigma;
 
-            float gx = img_grad.get_pixel(m, n, 0), gy = img_grad.get_pixel(m, n, 1);
-            float theta_mn = std::fmod(std::atan2(gy, gx) - theta + 4 * M_PI, 2 * M_PI);
-            float grad_norm = std::sqrt(gx * gx + gy * gy);
-            float weight = std::exp(-(std::pow(m * pix_dist - kp.x, 2) + std::pow(n * pix_dist - kp.y, 2)) / (2 * patch_sigma * patch_sigma));
-            float contribution = weight * grad_norm;
+                // verify (x, y) is inside the description patch
+                // if (std::max(std::abs(x), std::abs(y)) > lambda_desc * (N_HIST + 1.) / N_HIST)
+                if (std::max(std::abs(x), std::abs(y)) > hist_bin_factor)
+                    continue;
 
-            // #pragma omp critical
-            update_histograms(histograms, x, y, contribution, theta_mn, lambda_desc);
+                float gx = img_grad.get_pixel(m, n, 0), gy = img_grad.get_pixel(m, n, 1);
+                float theta_mn = std::fmod(std::atan2(gy, gx) - theta + 4 * M_PI, 2 * M_PI);
+                float grad_norm = std::sqrt(gx * gx + gy * gy);
+
+                float dist_sq = dx * dx + dy * dy;
+                // float weight = std::exp(-(std::pow(m * pix_dist - kp.x, 2) + std::pow(n * pix_dist - kp.y, 2)) / (2 * patch_sigma * patch_sigma));
+                float weight = std::exp(-dist_sq / (2 * patch_sigma * patch_sigma));
+                float contribution = weight * grad_norm;
+
+                // #pragma omp critical
+                update_histograms(histograms, x, y, contribution, theta_mn, lambda_desc);
+                // update_histograms(local_hist, x, y, contribution, theta_mn, lambda_desc);
+            }
         }
-    }
 
+        // Merge local histograms into global histogram
+        // #pragma omp for reduction(+:histograms[:N_HIST][:N_HIST][:N_ORI])
+        // for (int i = 0; i < N_HIST; i++) {
+        //     for (int j = 0; j < N_HIST; j++) {
+        //         for (int k = 0; k < N_ORI; k++) {
+        //             histograms[i][j][k] += local_hist[i][j][k];
+        //         }
+        //     }
+        // }
+    }
     // build feature vector (descriptor) from histograms
     hists_to_vec(histograms, kp.descriptor);
 }
