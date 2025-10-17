@@ -3,8 +3,8 @@
 #SBATCH --account=ACD114118
 #SBATCH --partition=ctest
 #SBATCH --nodes=1                    # Request max nodes you need
-#SBATCH --ntasks=4                  # Request max tasks you need
-#SBATCH --cpus-per-task=8           # Request max CPUs per task
+#SBATCH --ntasks=8                  # Request max tasks you need
+#SBATCH --cpus-per-task=6           # Request max CPUs per task
 #SBATCH --time=01:00:00
 #SBATCH --output=output_%j.log
 #SBATCH --error=error_%j.log
@@ -21,31 +21,31 @@ echo "==================================="
 echo "Scalability Analysis for HW2"
 echo "==================================="
 
-# # ===================================
-# # 1. Scaling Number of Processes (Fixed: 1 node, 6 cores/process)
-# # ===================================
-# echo -e "\n[Test 1] Scaling Number of Processes"
-# for proc in 1 2 4 6 8; do
-#     echo "Testing with $proc processes..."
-#     srun -A $ACCOUNT -N 1 -n $proc -c 6 --time $TIME_LIMIT \
-#         ./hw2 \
-#         ./testcases/$TID.jpg \
-#         ./analysis_results/${TID}_proc${proc}.jpg \
-#         ./analysis_results/${TID}_proc${proc}.txt
-# done
-
 # ===================================
-# 2. Scaling Number of Cores per Process (Fixed: 1 node, 4 processes)
+# 1. Scaling Number of Processes (Fixed: 1 node, 6 cores/process)
 # ===================================
-echo -e "\n[Test 2] Scaling Number of Cores per Process"
-for core in 1 2 4 6 8; do
-    echo "Testing with $core cores per process..."
-    srun -A $ACCOUNT -N 1 -n 4 -c $core --time $TIME_LIMIT \
+echo -e "\n[Test 1] Scaling Number of Processes"
+for proc in 1 2 4 6 8; do
+    echo "Testing with $proc processes..."
+    srun -A $ACCOUNT -N 1 -n $proc -c 6 --time $TIME_LIMIT \
         ./hw2 \
         ./testcases/$TID.jpg \
-        ./analysis_results/${TID}_core${core}.jpg \
-        ./analysis_results/${TID}_core${core}.txt
+        ./analysis_results/${TID}_proc${proc}.jpg \
+        ./analysis_results/${TID}_proc${proc}.txt
 done
+
+# # ===================================
+# # 2. Scaling Number of Cores per Process (Fixed: 1 node, 4 processes)
+# # ===================================
+# echo -e "\n[Test 2] Scaling Number of Cores per Process"
+# for core in 1 2 4 6 8; do
+#     echo "Testing with $core cores per process..."
+#     srun -A $ACCOUNT -N 1 -n 4 -c $core --time $TIME_LIMIT \
+#         ./hw2 \
+#         ./testcases/$TID.jpg \
+#         ./analysis_results/${TID}_core${core}.jpg \
+#         ./analysis_results/${TID}_core${core}.txt
+# done
 
 # # ===================================
 # # 3. Scaling Number of Nodes (Fixed: 4 processes/node, 6 cores/process)
