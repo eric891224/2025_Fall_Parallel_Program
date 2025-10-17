@@ -7,7 +7,6 @@
 #SBATCH --time=01:00:00
 #SBATCH --output=output.log
 #SBATCH --error=error.log
-#SBATCH --exclusive                  # Get exclusive access to nodes
 
 # The srun commands inside your script will use subsets of this allocation
 bash srun_analysis.sh
