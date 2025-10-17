@@ -1,6 +1,6 @@
 node=1
-proc=1
-core=1
+proc=4
+core=6
 
 TID=01
 

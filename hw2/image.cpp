@@ -359,16 +359,32 @@ Image gaussian_blur(const Image &img, float sigma)
     Image tmp(img.width, img.height, 1);
     Image filtered(img.width, img.height, 1);
 
-    // Distribute work by x-coordinate
-    int local_width = img.width / world_size;
-    int start_x = rank * local_width;
-    int end_x = (rank == world_size - 1) ? img.width : start_x + local_width;
+    // Distribute work by y-coordinate
+    int local_height = img.height / world_size;
+    int start_y = rank * local_height;
+    int end_y = (rank == world_size - 1) ? img.height : start_y + local_height;
+    local_height = end_y - start_y; // adjust for last process
 
-    // Vertical convolution - each process handles its x-range
-    #pragma omp parallel for collapse(2)
-    for (int x = start_x; x < end_x; x++)
+    // Calculate counts and displacements for MPI_Allgatherv
+    std::vector<int> counts(world_size);
+    std::vector<int> displs(world_size);
+    for (int i = 0; i < world_size; i++)
     {
-        for (int y = 0; y < img.height; y++)
+        int proc_start = i * (img.height / world_size);
+        int proc_end = (i == world_size - 1) ? img.height : proc_start + (img.height / world_size);
+        counts[i] = (proc_end - proc_start) * img.width;
+        displs[i] = proc_start * img.width;
+    }
+
+    // Create local buffer for vertical convolution results
+    int local_size = local_height * img.width;
+    std::vector<float> local_tmp(local_size);
+
+    // Vertical convolution - each process handles its y-range
+    #pragma omp parallel for collapse(2)
+    for (int x = 0; x < img.width; x++)
+    {
+        for (int y = start_y; y < end_y; y++)
         {
             float sum = 0;
             for (int k = 0; k < size; k++)
@@ -376,19 +392,25 @@ Image gaussian_blur(const Image &img, float sigma)
                 int dy = -center + k;
                 sum += img.get_pixel(x, y + dy, 0) * kernel.data[k];
             }
-            tmp.set_pixel(x, y, 0, sum);
+            // tmp.set_pixel(x, y, 0, sum);
+            // Store in local buffer
+            int local_idx = (y - start_y) * img.width + x;
+            local_tmp[local_idx] = sum;
         }
     }
 
-    // Synchronize - all processes need tmp to be complete
-    // MPI_Barrier(MPI_COMM_WORLD);
-    MPI_Allreduce(MPI_IN_PLACE, tmp.data, tmp.size, MPI_FLOAT, MPI_SUM, MPI_COMM_WORLD);
+    // Gather results from all processes using Allgatherv
+    MPI_Allgatherv(local_tmp.data(), local_size, MPI_FLOAT,
+                   tmp.data, counts.data(), displs.data(), MPI_FLOAT, MPI_COMM_WORLD);
 
-    // Horizontal convolution - each process handles its x-range
+    // Create local buffer for horizontal convolution results
+    std::vector<float> local_filtered(local_size);
+
+    // Horizontal convolution - each process handles its y-range
     #pragma omp parallel for collapse(2)
-    for (int x = start_x; x < end_x; x++)
+    for (int x = 0; x < img.width; x++)
     {
-        for (int y = 0; y < img.height; y++)
+        for (int y = start_y; y < end_y; y++)
         {
             float sum = 0;
             for (int k = 0; k < size; k++)
@@ -396,13 +418,16 @@ Image gaussian_blur(const Image &img, float sigma)
                 int dx = -center + k;
                 sum += tmp.get_pixel(x + dx, y, 0) * kernel.data[k];
             }
-            filtered.set_pixel(x, y, 0, sum);
+            // filtered.set_pixel(x, y, 0, sum);
+            // Store in local buffer
+            int local_idx = (y - start_y) * img.width + x;
+            local_filtered[local_idx] = sum;
         }
     }
 
-    // Final synchronization
-    // MPI_Barrier(MPI_COMM_WORLD);
-    MPI_Allreduce(MPI_IN_PLACE, filtered.data, filtered.size, MPI_FLOAT, MPI_SUM, MPI_COMM_WORLD);
+    // Final gather using Allgatherv
+    MPI_Allgatherv(local_filtered.data(), local_size, MPI_FLOAT,
+                   filtered.data, counts.data(), displs.data(), MPI_FLOAT, MPI_COMM_WORLD);
 
     return filtered;
 }
