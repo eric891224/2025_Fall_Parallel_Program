@@ -16,7 +16,7 @@ echo "==================================="
 # 1. Scaling Number of Processes (Fixed: 1 node, 6 cores/process)
 # ===================================
 echo -e "\n[Test 1] Scaling Number of Processes"
-for proc in 1 2 4 8 12; do
+for proc in 1 2 4 6 8; do
     echo "Testing with $proc processes..."
     srun -A $ACCOUNT -N 1 -n $proc -c 6 --time $TIME_LIMIT \
         ./hw2 \
@@ -29,7 +29,7 @@ done
 # 2. Scaling Number of Cores per Process (Fixed: 1 node, 4 processes)
 # ===================================
 echo -e "\n[Test 2] Scaling Number of Cores per Process"
-for core in 1 2 4 6 8 12; do
+for core in 1 2 4 6 8; do
     echo "Testing with $core cores per process..."
     srun -A $ACCOUNT -N 1 -n 4 -c $core --time $TIME_LIMIT \
         ./hw2 \
@@ -42,7 +42,7 @@ done
 # 3. Scaling Number of Nodes (Fixed: 4 processes/node, 6 cores/process)
 # ===================================
 echo -e "\n[Test 3] Scaling Number of Nodes"
-for node in 1 2 4 8; do
+for node in 1 2 4 6; do
     total_proc=$((node * 4))
     echo "Testing with $node nodes ($total_proc total processes)..."
     srun -A $ACCOUNT -N $node -n $total_proc -c 6 --time $TIME_LIMIT \
