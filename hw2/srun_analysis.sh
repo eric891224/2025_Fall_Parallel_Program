@@ -1,8 +1,17 @@
 #!/bin/bash
+#SBATCH --job-name=hw2_analysis
+#SBATCH --account=ACD114118
+#SBATCH --partition=ctest
+#SBATCH --nodes=1                    # Request max nodes you need
+#SBATCH --ntasks=8                  # Request max tasks you need
+#SBATCH --cpus-per-task=6           # Request max CPUs per task
+#SBATCH --time=01:00:00
+#SBATCH --output=output.log
+#SBATCH --error=error.log
 
 # Test configuration
 TID=06
-TIME_LIMIT=00:05:00
+TIME_LIMIT=00:03:00
 ACCOUNT=ACD114118
 
 # Create results directory for analysis
