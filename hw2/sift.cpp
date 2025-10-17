@@ -141,9 +141,9 @@ ScaleSpacePyramid generate_gaussian_pyramid(const Image &img, float sigma_min,
 // generate pyramid of difference of gaussians (DoG) images
 ScaleSpacePyramid generate_dog_pyramid(const ScaleSpacePyramid &img_pyramid)
 {
-    int rank = 0, size = 1;
+    int rank = 0, world_size = 1;
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-    MPI_Comm_size(MPI_COMM_WORLD, &size);
+    MPI_Comm_size(MPI_COMM_WORLD, &world_size);
 
     ScaleSpacePyramid dog_pyramid = {
         img_pyramid.num_octaves,
@@ -153,6 +153,15 @@ ScaleSpacePyramid generate_dog_pyramid(const ScaleSpacePyramid &img_pyramid)
     {
         dog_pyramid.octaves[i].reserve(dog_pyramid.imgs_per_octave);
 
+        // Calculate octave data size for batching AllReduce
+        size_t octave_data_size = 0;
+        for (int j = 1; j < img_pyramid.imgs_per_octave; j++) {
+            octave_data_size += img_pyramid.octaves[i][j].size;
+        }
+        
+        std::vector<float> octave_buffer(octave_data_size, 0.0f);
+        size_t current_offset = 0;
+
         for (int j = 1; j < img_pyramid.imgs_per_octave; j++)
         {
             // Image diff = img_pyramid.octaves[i][j]; // original
@@ -161,22 +170,37 @@ ScaleSpacePyramid generate_dog_pyramid(const ScaleSpacePyramid &img_pyramid)
                               img_pyramid.octaves[i][j].channels); // for AllReduce
 
             // Prepare for AllReduce
-            int local_size = diff.size / size;
+            int local_size = diff.size / world_size;
             int start_idx = rank * local_size;
-            int end_idx = (rank == size - 1) ? diff.size : start_idx + local_size;
+            int end_idx = (rank == world_size - 1) ? diff.size : start_idx + local_size;
 
 // for (int pix_idx = 0; pix_idx < diff.size; pix_idx++)
 #pragma omp parallel for
             for (int pix_idx = start_idx; pix_idx < end_idx; pix_idx++)
             {
                 // diff.data[pix_idx] -= img_pyramid.octaves[i][j - 1].data[pix_idx]; // original
-                diff.data[pix_idx] = img_pyramid.octaves[i][j].data[pix_idx] - img_pyramid.octaves[i][j - 1].data[pix_idx]; // for AllReduce
+                // diff.data[pix_idx] = img_pyramid.octaves[i][j].data[pix_idx] - img_pyramid.octaves[i][j - 1].data[pix_idx]; // perimage AllReduce
+                octave_buffer[current_offset + pix_idx] = img_pyramid.octaves[i][j].data[pix_idx] - img_pyramid.octaves[i][j - 1].data[pix_idx]; // batched AllReduce
             }
 
             // AllReduce diff results
-            MPI_Allreduce(MPI_IN_PLACE, diff.data, diff.size, MPI_FLOAT, MPI_SUM, MPI_COMM_WORLD);
+            // MPI_Allreduce(MPI_IN_PLACE, diff.data, diff.size, MPI_FLOAT, MPI_SUM, MPI_COMM_WORLD);
             
+            current_offset += diff.size;
             dog_pyramid.octaves[i].emplace_back(std::move(diff));
+        }
+
+        // // Single MPI_Allreduce per octave
+        MPI_Allreduce(MPI_IN_PLACE, octave_buffer.data(), octave_data_size, 
+                     MPI_FLOAT, MPI_SUM, MPI_COMM_WORLD);
+        
+        // Copy results back
+        current_offset = 0;
+        for (int j = 0; j < dog_pyramid.imgs_per_octave; j++) {
+            std::copy(octave_buffer.begin() + current_offset,
+                     octave_buffer.begin() + current_offset + dog_pyramid.octaves[i][j].size,
+                     dog_pyramid.octaves[i][j].data);
+            current_offset += dog_pyramid.octaves[i][j].size;
         }
     }
     return dog_pyramid;
@@ -548,6 +572,16 @@ ScaleSpacePyramid generate_gradient_pyramid(const ScaleSpacePyramid &pyramid)
             grad_pyramid.octaves[i].emplace_back(width, height, 2);
         }
 
+        // Calculate octave data size for batching AllReduce
+        size_t octave_data_size = 0;
+        for (int j = 0; j < pyramid.imgs_per_octave; j++)
+        {
+            octave_data_size += width * height * 2; // 2 channels for gx, gy
+        }
+
+        std::vector<float> octave_buffer(octave_data_size, 0.0f);
+        size_t current_offset = 0;
+
         // compute gradients across processes
         // #pragma omp parallel for collapse(3)
         for (int j = 0; j < pyramid.imgs_per_octave; j++)
@@ -568,16 +602,42 @@ ScaleSpacePyramid generate_gradient_pyramid(const ScaleSpacePyramid &pyramid)
                 {
                     float gx = (pyramid.octaves[i][j].get_pixel(x + 1, y, 0) - pyramid.octaves[i][j].get_pixel(x - 1, y, 0)) * 0.5;
                     float gy = (pyramid.octaves[i][j].get_pixel(x, y + 1, 0) - pyramid.octaves[i][j].get_pixel(x, y - 1, 0)) * 0.5;
-                    grad_pyramid.octaves[i][j].set_pixel(x, y, 0, gx);
-                    grad_pyramid.octaves[i][j].set_pixel(x, y, 1, gy);
+                    // grad_pyramid.octaves[i][j].set_pixel(x, y, 0, gx);
+                    // grad_pyramid.octaves[i][j].set_pixel(x, y, 1, gy);
+
+                    // prepare for batched AllReduce
+                    int pixel_idx = y * width + x;
+                    octave_buffer[current_offset + pixel_idx * 2] = gx;
+                    octave_buffer[current_offset + pixel_idx * 2 + 1] = gy;
                 }
             }
+            current_offset += width * height * 2;
 
             // AllReduce grad results
-            MPI_Allreduce(MPI_IN_PLACE, grad_pyramid.octaves[i][j].data, grad_pyramid.octaves[i][j].size, MPI_FLOAT, MPI_SUM, MPI_COMM_WORLD);
+            // MPI_Allreduce(MPI_IN_PLACE, grad_pyramid.octaves[i][j].data, grad_pyramid.octaves[i][j].size, MPI_FLOAT, MPI_SUM, MPI_COMM_WORLD);
             // MPI_Iallreduce(MPI_IN_PLACE, grad_pyramid.octaves[i][j].data, 
             //               grad_pyramid.octaves[i][j].size, MPI_FLOAT, MPI_SUM, 
             //               MPI_COMM_WORLD, &requests[j]);
+        }
+
+        // Single MPI_Allreduce per octave
+        MPI_Allreduce(MPI_IN_PLACE, octave_buffer.data(), octave_data_size, 
+                     MPI_FLOAT, MPI_SUM, MPI_COMM_WORLD);
+
+        // Copy results back to gradient images
+        current_offset = 0;
+        for (int j = 0; j < pyramid.imgs_per_octave; j++)
+        {
+            for (int pixel_idx = 0; pixel_idx < width * height; pixel_idx++)
+            {
+                int x = pixel_idx % width;
+                int y = pixel_idx / width;
+                float gx = octave_buffer[current_offset + pixel_idx * 2];
+                float gy = octave_buffer[current_offset + pixel_idx * 2 + 1];
+                grad_pyramid.octaves[i][j].set_pixel(x, y, 0, gx);
+                grad_pyramid.octaves[i][j].set_pixel(x, y, 1, gy);
+            }
+            current_offset += width * height * 2;
         }
     }
 

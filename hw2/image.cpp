@@ -26,6 +26,7 @@ Image::Image(std::string file_path)
 
     size = width * height * channels;
     data = new float[size];
+    #pragma omp parallel for collapse(3) schedule(static, 32)
     for (int x = 0; x < width; x++)
     {
         for (int y = 0; y < height; y++)
@@ -126,6 +127,7 @@ Image &Image::operator=(Image &&other)
 bool Image::save(std::string file_path)
 {
     unsigned char *out_data = new unsigned char[width * height * channels];
+    #pragma omp parallel for collapse(3) schedule(static, 32)
     for (int x = 0; x < width; x++)
     {
         for (int y = 0; y < height; y++)
@@ -193,6 +195,7 @@ Image Image::resize(int new_w, int new_h, Interpolation method) const
 {
     Image resized(new_w, new_h, this->channels);
     float value = 0;
+    #pragma omp parallel for collapse(3) schedule(static, 32)
     for (int x = 0; x < new_w; x++)
     {
         for (int y = 0; y < new_h; y++)
@@ -235,8 +238,19 @@ Image rgb_to_grayscale(const Image &img)
 {
     assert(img.channels == 3);
     Image gray(img.width, img.height, 1);
-#pragma omp parallel for collapse(2)
+
+    // prepare for AllReduce
+    // int rank = 0, size = 1;
+    // MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    // MPI_Comm_size(MPI_COMM_WORLD, &size);
+    // int local_width = img.width / size;
+    // int start_x = rank * local_width;
+    // int end_x = (rank == size - 1) ? img.width : start_x + local_width;
+
+#pragma omp parallel for collapse(2) schedule(static, 32)
     for (int x = 0; x < img.width; x++)
+    // #pragma omp parallel for collapse(2) schedule(static, 32)
+    // for (int x = start_x; x < end_x; x++)
     {
         for (int y = 0; y < img.height; y++)
         {
@@ -247,6 +261,9 @@ Image rgb_to_grayscale(const Image &img)
             gray.set_pixel(x, y, 0, 0.299 * red + 0.587 * green + 0.114 * blue);
         }
     }
+
+    // AllReduce gray
+    // MPI_Allreduce(MPI_IN_PLACE, gray.data, gray.size, MPI_FLOAT, MPI_SUM, MPI_COMM_WORLD);
     return gray;
 }
 
@@ -254,6 +271,7 @@ Image grayscale_to_rgb(const Image &img)
 {
     assert(img.channels == 1);
     Image rgb(img.width, img.height, 3);
+    #pragma omp parallel for collapse(2) schedule(static, 32)
     for (int x = 0; x < img.width; x++)
     {
         for (int y = 0; y < img.height; y++)
