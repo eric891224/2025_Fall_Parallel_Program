@@ -1,0 +1,75 @@
+===================================
+Scalability Analysis for HW2
+===================================
+
+[Test 3] Scaling Number of Nodes
+Testing with 1 nodes (1 total processes)...
+=== SIFT Performance Timing ===
+Image conversion:   26.38 ms
+Gaussian pyramid:   13812.01 ms
+DoG pyramid:        2236.96 ms
+Find keypoints:     2154.50 ms
+Gradient pyramid:   7113.01 ms
+Find orientations:  5329.22 ms
+Compute descriptors:18542.68 ms
+Total time:         49214.76 ms
+===============================
+Execution time: 53496.47 ms
+Found 164448 keypoints.
+Testing with 2 nodes (2 total processes)...
+=== SIFT Performance Timing ===
+Image conversion:   26.95 ms
+Gaussian pyramid:   8092.03 ms
+DoG pyramid:        1655.81 ms
+Find keypoints:     1182.71 ms
+Gradient pyramid:   4489.94 ms
+Find orientations:  5327.55 ms
+Compute descriptors:9952.37 ms
+Total time:         30727.37 ms
+===============================
+Execution time: 35236.21 ms
+Found 164448 keypoints.
+Testing with 4 nodes (4 total processes)...
+=== SIFT Performance Timing ===
+Image conversion:   26.93 ms
+Gaussian pyramid:   5615.36 ms
+DoG pyramid:        1398.55 ms
+Find keypoints:     619.97 ms
+Gradient pyramid:   3745.96 ms
+Find orientations:  5338.65 ms
+Compute descriptors:4487.77 ms
+Total time:         21233.20 ms
+===============================
+Execution time: 25632.98 ms
+Found 164448 keypoints.
+Testing with 6 nodes (6 total processes)...
+=== SIFT Performance Timing ===
+Image conversion:   26.08 ms
+Gaussian pyramid:   4919.04 ms
+DoG pyramid:        1346.21 ms
+Find keypoints:     439.41 ms
+Gradient pyramid:   3399.00 ms
+Find orientations:  5344.84 ms
+Compute descriptors:2969.23 ms
+Total time:         18443.80 ms
+===============================
+Execution time: 22817.38 ms
+Found 164448 keypoints.
+Testing with 8 nodes (8 total processes)...
+=== SIFT Performance Timing ===
+Image conversion:   27.96 ms
+Gaussian pyramid:   4771.26 ms
+DoG pyramid:        1281.86 ms
+Find keypoints:     368.06 ms
+Gradient pyramid:   3072.53 ms
+Find orientations:  5348.00 ms
+Compute descriptors:2384.11 ms
+Total time:         17253.77 ms
+===============================
+Execution time: 21767.31 ms
+Found 164448 keypoints.
+
+===================================
+All tests completed!
+Results saved in ./analysis_results/
+===================================
