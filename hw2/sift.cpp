@@ -900,48 +900,48 @@ std::vector<Keypoint> find_keypoints_and_descriptors(const Image &img, float sig
     MPI_Comm_size(MPI_COMM_WORLD, &world_size);
 
     // Timer and duration storage
-    auto timer = std::chrono::high_resolution_clock::now();
-    std::vector<double> durations;
-    std::vector<std::string> function_names = {
-        "Image conversion",
-        "Gaussian pyramid",
-        "DoG pyramid", 
-        "Find keypoints",
-        "Gradient pyramid",
-        "Find orientations",
-        "Compute descriptors"
-    };
+    // auto timer = std::chrono::high_resolution_clock::now();
+    // std::vector<double> durations;
+    // std::vector<std::string> function_names = {
+    //     "Image conversion",
+    //     "Gaussian pyramid",
+    //     "DoG pyramid", 
+    //     "Find keypoints",
+    //     "Gradient pyramid",
+    //     "Find orientations",
+    //     "Compute descriptors"
+    // };
 
     // Convert to grayscale if needed
-    timer = std::chrono::high_resolution_clock::now();
+    // timer = std::chrono::high_resolution_clock::now();
     const Image &input = img.channels == 1 ? img : rgb_to_grayscale(img);
-    durations.push_back(std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now() - timer).count());
+    // durations.push_back(std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now() - timer).count());
 
     // Generate Gaussian pyramid
-    timer = std::chrono::high_resolution_clock::now();
+    // timer = std::chrono::high_resolution_clock::now();
     ScaleSpacePyramid gaussian_pyramid = generate_gaussian_pyramid(input, sigma_min, num_octaves,
                                                                    scales_per_octave);
-    durations.push_back(std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now() - timer).count());
+    // durations.push_back(std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now() - timer).count());
 
     // Generate DoG pyramid
-    timer = std::chrono::high_resolution_clock::now();
+    // timer = std::chrono::high_resolution_clock::now();
     ScaleSpacePyramid dog_pyramid = generate_dog_pyramid(gaussian_pyramid);
-    durations.push_back(std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now() - timer).count());
+    // durations.push_back(std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now() - timer).count());
 
     // Find keypoints
-    timer = std::chrono::high_resolution_clock::now();
+    // timer = std::chrono::high_resolution_clock::now();
     std::vector<Keypoint> tmp_kps = find_keypoints(dog_pyramid, contrast_thresh, edge_thresh);
-    durations.push_back(std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now() - timer).count());
+    // durations.push_back(std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now() - timer).count());
 
     // Generate gradient pyramid
-    timer = std::chrono::high_resolution_clock::now();
+    // timer = std::chrono::high_resolution_clock::now();
     ScaleSpacePyramid grad_pyramid = generate_gradient_pyramid(gaussian_pyramid);
-    durations.push_back(std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now() - timer).count());
+    // durations.push_back(std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now() - timer).count());
 
     std::vector<Keypoint> kps;
 
     // Calculate total number of descriptors needed
-    timer = std::chrono::high_resolution_clock::now();
+    // timer = std::chrono::high_resolution_clock::now();
     
     std::vector<std::pair<Keypoint, float>> kp_theta_pairs;
 
@@ -954,12 +954,12 @@ std::vector<Keypoint> find_keypoints_and_descriptors(const Image &img, float sig
             kp_theta_pairs.emplace_back(kp_tmp, theta);
         }
     }
-    durations.push_back(std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now() - timer).count());
+    // durations.push_back(std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now() - timer).count());
 
     kps.resize(kp_theta_pairs.size());
 
     // Parallelize descriptor computation across keypoints
-    timer = std::chrono::high_resolution_clock::now();
+    // timer = std::chrono::high_resolution_clock::now();
     // prepare for allgatherv
     int local_size = kp_theta_pairs.size() / world_size;
     int start_idx = rank * local_size;
@@ -994,25 +994,25 @@ std::vector<Keypoint> find_keypoints_and_descriptors(const Image &img, float sig
                    kps.data(), local_sizes.data(), displs.data(), create_keypoint_mpi_type(),
                    MPI_COMM_WORLD);
     
-    durations.push_back(std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now() - timer).count());
+    // durations.push_back(std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now() - timer).count());
 
     // Calculate total time
-    double total_time = 0;
-    for (double duration : durations) {
-        total_time += duration;
-    }
+    // double total_time = 0;
+    // for (double duration : durations) {
+    //     total_time += duration;
+    // }
 
-    // Print timing results (only from rank 0 to avoid duplicate output)
-    if (rank == 0) {
-        std::cout << "=== SIFT Performance Timing ===" << std::endl;
-        for (size_t i = 0; i < durations.size(); i++) {
-            std::cout << std::setw(20) << std::left << (function_names[i] + ":") 
-                      << std::fixed << std::setprecision(2) << durations[i] << " ms" << std::endl;
-        }
-        std::cout << std::setw(20) << std::left << "Total time:" 
-                  << std::fixed << std::setprecision(2) << total_time << " ms" << std::endl;
-        std::cout << "===============================" << std::endl;
-    }
+    // // Print timing results (only from rank 0 to avoid duplicate output)
+    // if (rank == 0) {
+    //     std::cout << "=== SIFT Performance Timing ===" << std::endl;
+    //     for (size_t i = 0; i < durations.size(); i++) {
+    //         std::cout << std::setw(20) << std::left << (function_names[i] + ":") 
+    //                   << std::fixed << std::setprecision(2) << durations[i] << " ms" << std::endl;
+    //     }
+    //     std::cout << std::setw(20) << std::left << "Total time:" 
+    //               << std::fixed << std::setprecision(2) << total_time << " ms" << std::endl;
+    //     std::cout << "===============================" << std::endl;
+    // }
 
     /* original serial section */
     // for (Keypoint &kp_tmp : tmp_kps)
