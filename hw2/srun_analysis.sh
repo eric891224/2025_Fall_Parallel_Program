@@ -6,8 +6,8 @@
 #SBATCH --ntasks=8                  # Request max tasks you need
 #SBATCH --cpus-per-task=6           # Request max CPUs per task
 #SBATCH --time=01:00:00
-#SBATCH --output=output.log
-#SBATCH --error=error.log
+#SBATCH --output=output_%j.log
+#SBATCH --error=error_%j.log
 
 # Test configuration
 TID=06
