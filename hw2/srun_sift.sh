@@ -15,6 +15,6 @@ for proc in 1 2 4 6 8; do
     srun -A $ACCOUNT -N 1 -n $proc -c 6 --time $TIME_LIMIT \
         ./hw2 \
         ./testcases/$TID.jpg \
-        ./analysis_results/${TID}_proc${proc}.jpg \
-        ./analysis_results/${TID}_proc${proc}.txt
+        ./results/${TID}_proc${proc}.jpg \
+        ./results/${TID}_proc${proc}.txt
 done
