@@ -5,8 +5,8 @@ NVCC = nvcc
 
 # Paths (absolute path)
 # use ta's version
-# LIB_PATH = /work/b10502010/pp25/hw3
-LIB_PATH = /mnt/disk1/eric891224/NTU/2025_Fall_Parallel_Program/hw3
+LIB_PATH = /work/b10502010/pp25/hw3
+# LIB_PATH = /mnt/disk1/eric891224/NTU/2025_Fall_Parallel_Program/hw3
 LODEPNG_DIR = $(LIB_PATH)/lodepng
 GLM_DIR = $(LIB_PATH)/glm
 
