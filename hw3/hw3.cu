@@ -437,8 +437,8 @@ int main(int argc, char **argv)
     //---
 
     // ---start rendering
-    dim3 blockSize(16, 16);
-    // dim3 blockSize(32, 8);
+    // dim3 blockSize(16, 16);
+    dim3 blockSize(8, 8);
     dim3 gridSize((width + blockSize.x - 1) / blockSize.x,
                   (height + blockSize.y - 1) / blockSize.y);
     render<<<gridSize, blockSize>>>(width, height, d_raw_image);
