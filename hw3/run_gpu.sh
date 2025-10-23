@@ -1,7 +1,7 @@
-pos="4.152 2.398 -2.601"
+pos="3.726 0.511 -0.096"
 tarpos="0 0 0"
-width=512
-height=512
+width=2048
+height=2048
 
 
 read x1 y1 z1 <<< "$pos"
