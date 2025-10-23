@@ -117,6 +117,25 @@ struct ConstData
     // vec3 target_pos;
 } h_C;
 
+__device__ __forceinline__ double pow_x(double base, int exp)
+{
+    double result = 1.0;
+    int e = exp;
+    if (e < 0)
+    {
+        base = 1.0 / base;
+        e = -e;
+    }
+    while (e > 0)
+    {
+        if (e & 1)
+            result *= base;
+        base *= base;
+        e >>= 1;
+    }
+    return result;
+}
+
 __device__ __forceinline__ double md(vec3 p, double &trap)
 {
     vec3 v = p;
@@ -124,26 +143,30 @@ __device__ __forceinline__ double md(vec3 p, double &trap)
     double r = glm::length(v); // r = |v| = sqrt(x^2 + y^2 + z^2)
     trap = r;
 
-    double r2, r4, r7, r8;
+    // double r2, r4, r7, r8;
 
 #pragma unroll
     for (int i = 0; i < C.md_iter; ++i)
     {
-        r2 = r * r;
-        r4 = r2 * r2;
-        r7 = r * r2 * r4;
-        r8 = r4 * r4;
+        // r2 = r * r;
+        // r4 = r2 * r2;
+        // r7 = r * r2 * r4;
+        // r8 = r4 * r4;
 
         double theta = glm::atan(v.y, v.x) * C.power;
         double phi = glm::asin(v.z / r) * C.power;
         // dr = C.power * glm::pow(r, C.power - 1.) * dr + 1.;
-        dr = C.power * r7 * dr + 1.; // optimized for power = 8
+        // dr = C.power * r7 * dr + 1.; // optimized for power = 8
+        dr = C.power * pow_x(r, C.power - 1) * dr + 1.;
         // v = p + glm::pow(r, C.power) * vec3(cos(theta) * cos(phi),
         //                                     cos(phi) * sin(theta),
         //                                     -sin(phi)); // update vk+1
-        v = p + r8 * vec3(cos(theta) * cos(phi),
-                          cos(phi) * sin(theta),
-                          -sin(phi)); // update vk+1
+        // v = p + r8 * vec3(cos(theta) * cos(phi),
+        //                   cos(phi) * sin(theta),
+        //                   -sin(phi)); // update vk+1
+        v = p + pow_x(r, C.power) * vec3(cos(theta) * cos(phi),
+                                         cos(phi) * sin(theta),
+                                         -sin(phi)); // update vk+1
 
         // orbit trap for coloring
         trap = glm::min(trap, r);
