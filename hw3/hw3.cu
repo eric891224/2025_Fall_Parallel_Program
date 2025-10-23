@@ -330,7 +330,9 @@ __global__ void render(int width, int height, unsigned char *raw_image)
                                                      1.0));                // self occlution
                 double sdw = softshadow(pos + .001 * nr, C.sd, 16.);       // shadow
                 double dif = glm::clamp(glm::dot(C.sd, nr), 0., 1.) * sdw; // diffuse
-                double spe = glm::pow(glm::clamp(glm::dot(nr, hal), 0., 1.), gloss) *
+                // double spe = glm::pow(glm::clamp(glm::dot(nr, hal), 0., 1.), gloss) *
+                //              dif; // self shadow
+                double spe = pow_x(glm::clamp(glm::dot(nr, hal), 0., 1.), gloss) *
                              dif; // self shadow
 
                 vec3 lin(0.);
@@ -340,7 +342,9 @@ __global__ void render(int width, int height, unsigned char *raw_image)
 
                 col = glm::pow(col,
                                vec3(.7, .9, 1.)); // fake SSS (subsurface scattering)
-                col += spe * 0.8;                 // specular
+                // col = pow_x(col,
+                //                vec3(.7, .9, 1.)); // fake SSS (subsurface scattering)
+                col += spe * 0.8; // specular
             }
             //---
 
