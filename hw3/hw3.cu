@@ -255,8 +255,7 @@ __device__ __forceinline__ double trace(vec3 ro, vec3 rd, double &trap,
 }
 
 /* per-pixel render kernel */
-__launch_bounds__(128 /*threadsPerBlock*/, 4 /*minBlocksPerSM*/)
-    __global__ void render(int width, int height, unsigned char *raw_image)
+__global__ void render(int width, int height, unsigned char *raw_image)
 {
     int x = blockIdx.x * blockDim.x + threadIdx.x;
     int y = blockIdx.y * blockDim.y + threadIdx.y;
@@ -438,8 +437,8 @@ int main(int argc, char **argv)
     //---
 
     // ---start rendering
-    // dim3 blockSize(16, 16);
-    dim3 blockSize(16, 8);
+    dim3 blockSize(16, 16);
+    // dim3 blockSize(8, 8);
     dim3 gridSize((width + blockSize.x - 1) / blockSize.x,
                   (height + blockSize.y - 1) / blockSize.y);
     render<<<gridSize, blockSize>>>(width, height, d_raw_image);
