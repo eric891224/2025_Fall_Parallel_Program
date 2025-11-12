@@ -1,0 +1,83 @@
+==PROF== Connected to process 701434 (/mnt/disk1/eric891224/NTU/2025_Fall_Parallel_Program/hw3/hw3)
+==PROF== Profiling "render" - 0: 0%..
+==WARNING== Launching the workload is taking more time than expected. If this continues to hang, terminate the profile and re-try by profiling the range of all related launches using '--replay-mode range'. See https://docs.nvidia.com/nsight-compute/ProfilingGuide/index.html#replay for more details.
+..50%....100% - 8 passes
+==PROF== Disconnected from process 701434
+[701434] hw3@127.0.0.1
+  render(int, int, unsigned char *) (256, 256, 1)x(8, 8, 1), Context 1, Stream 7, Device 0, CC 8.9
+    Section: GPU Speed Of Light Throughput
+    ----------------------- ----------- -----------------
+    Metric Name             Metric Unit      Metric Value
+    ----------------------- ----------- -----------------
+    DRAM Frequency                  Ghz             10.24
+    SM Frequency                    Ghz              2.23
+    Elapsed Cycles                cycle    23,137,721,627
+    Memory Throughput                 %              1.03
+    DRAM Throughput                   %              0.00
+    Duration                          s             10.35
+    L1/TEX Cache Throughput           %              1.04
+    L2 Cache Throughput               %              0.00
+    SM Active Cycles              cycle 22,933,297,897.61
+    Compute (SM) Throughput           %             86.21
+    ----------------------- ----------- -----------------
+
+    INF   This workload is utilizing greater than 80.0% of the available compute or memory performance of the device.   
+          To further improve performance, work will likely need to be shifted from the most utilized to another unit.   
+          Start by analyzing workloads in the Compute Workload Analysis section.                                        
+
+    Section: Launch Statistics
+    -------------------------------- --------------- ---------------
+    Metric Name                          Metric Unit    Metric Value
+    -------------------------------- --------------- ---------------
+    Block Size                                                    64
+    Function Cache Configuration                     CachePreferNone
+    Grid Size                                                 65,536
+    Registers Per Thread             register/thread              88
+    Shared Memory Configuration Size           Kbyte           32.77
+    Driver Shared Memory Per Block       Kbyte/block            1.02
+    Dynamic Shared Memory Per Block       byte/block               0
+    Static Shared Memory Per Block        byte/block               0
+    # SMs                                         SM             128
+    Stack Size                                                 1,024
+    Threads                                   thread       4,194,304
+    # TPCs                                                        64
+    Enabled TPC IDs                                              all
+    Uses Green Context                                             0
+    Waves Per SM                                               51.20
+    -------------------------------- --------------- ---------------
+
+    Section: Occupancy
+    ------------------------------- ----------- ------------
+    Metric Name                     Metric Unit Metric Value
+    ------------------------------- ----------- ------------
+    Block Limit SM                        block           24
+    Block Limit Registers                 block           10
+    Block Limit Shared Mem                block           32
+    Block Limit Warps                     block           24
+    Theoretical Active Warps per SM        warp           20
+    Theoretical Occupancy                     %        41.67
+    Achieved Occupancy                        %        32.29
+    Achieved Active Warps Per SM           warp        15.50
+    ------------------------------- ----------- ------------
+
+    OPT   Est. Local Speedup: 58.33%                                                                                    
+          The 5.00 theoretical warps per scheduler this kernel can issue according to its occupancy are below the       
+          hardware maximum of 12. This kernel's theoretical occupancy (41.7%) is limited by the number of required      
+          registers.                                                                                                    
+
+    Section: GPU and Memory Workload Distribution
+    -------------------------- ----------- ------------------
+    Metric Name                Metric Unit       Metric Value
+    -------------------------- ----------- ------------------
+    Average DRAM Active Cycles       cycle           3,741.33
+    Total DRAM Elapsed Cycles        cycle  1,272,326,430,720
+    Average L1 Active Cycles         cycle  22,933,297,897.61
+    Total L1 Elapsed Cycles          cycle  2,951,189,407,380
+    Average L2 Active Cycles         cycle       4,783,353.47
+    Total L2 Elapsed Cycles          cycle    737,922,504,636
+    Average SM Active Cycles         cycle  22,933,297,897.61
+    Total SM Elapsed Cycles          cycle  2,951,189,407,380
+    Average SMSP Active Cycles       cycle  22,708,628,975.39
+    Total SMSP Elapsed Cycles        cycle 11,804,757,629,520
+    -------------------------- ----------- ------------------
+

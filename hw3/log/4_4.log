@@ -1,0 +1,96 @@
+
+real    0m16.481s
+user    0m15.953s
+sys     0m0.492s
+==PROF== Connected to process 691130 (/mnt/disk1/eric891224/NTU/2025_Fall_Parallel_Program/hw3/hw3)
+==PROF== Profiling "render" - 0: 0%..
+==WARNING== Launching the workload is taking more time than expected. If this continues to hang, terminate the profile and re-try by profiling the range of all related launches using '--replay-mode range'. See https://docs.nvidia.com/nsight-compute/ProfilingGuide/index.html#replay for more details.
+..50%....100% - 8 passes
+==PROF== Disconnected from process 691130
+[691130] hw3@127.0.0.1
+  render(int, int, unsigned char *) (512, 512, 1)x(4, 4, 1), Context 1, Stream 7, Device 0, CC 8.9
+    Section: GPU Speed Of Light Throughput
+    ----------------------- ----------- -----------------
+    Metric Name             Metric Unit      Metric Value
+    ----------------------- ----------- -----------------
+    DRAM Frequency                  Ghz             10.24
+    SM Frequency                    Ghz              2.23
+    Elapsed Cycles                cycle    42,635,692,283
+    Memory Throughput                 %              0.57
+    DRAM Throughput                   %              0.00
+    Duration                          s             19.08
+    L1/TEX Cache Throughput           %              0.57
+    L2 Cache Throughput               %              0.00
+    SM Active Cycles              cycle 42,622,885,547.38
+    Compute (SM) Throughput           %             86.69
+    ----------------------- ----------- -----------------
+
+    INF   This workload is utilizing greater than 80.0% of the available compute or memory performance of the device.   
+          To further improve performance, work will likely need to be shifted from the most utilized to another unit.   
+          Start by analyzing workloads in the Compute Workload Analysis section.                                        
+
+    Section: Launch Statistics
+    -------------------------------- --------------- ---------------
+    Metric Name                          Metric Unit    Metric Value
+    -------------------------------- --------------- ---------------
+    Block Size                                                    16
+    Function Cache Configuration                     CachePreferNone
+    Grid Size                                                262,144
+    Registers Per Thread             register/thread              88
+    Shared Memory Configuration Size           Kbyte           32.77
+    Driver Shared Memory Per Block       Kbyte/block            1.02
+    Dynamic Shared Memory Per Block       byte/block               0
+    Static Shared Memory Per Block        byte/block               0
+    # SMs                                         SM             128
+    Stack Size                                                 1,024
+    Threads                                   thread       4,194,304
+    # TPCs                                                        64
+    Enabled TPC IDs                                              all
+    Uses Green Context                                             0
+    Waves Per SM                                              102.40
+    -------------------------------- --------------- ---------------
+
+    OPT   Est. Speedup: 50%                                                                                             
+          Threads are executed in groups of 32 threads called warps. This kernel launch is configured to execute 16     
+          threads per block. Consequently, some threads in a warp are masked off and those hardware resources are       
+          unused. Try changing the number of threads per block to be a multiple of 32 threads. Between 128 and 256      
+          threads per block is a good initial range for experimentation. Use smaller thread blocks rather than one      
+          large thread block per multiprocessor if latency affects performance.  This is particularly beneficial to     
+          kernels that frequently call __syncthreads(). See the Hardware Model                                          
+          (https://docs.nvidia.com/nsight-compute/ProfilingGuide/index.html#metrics-hw-model) description for more      
+          details on launch configurations.                                                                             
+
+    Section: Occupancy
+    ------------------------------- ----------- ------------
+    Metric Name                     Metric Unit Metric Value
+    ------------------------------- ----------- ------------
+    Block Limit SM                        block           24
+    Block Limit Registers                 block           20
+    Block Limit Shared Mem                block           32
+    Block Limit Warps                     block           48
+    Theoretical Active Warps per SM        warp           20
+    Theoretical Occupancy                     %        41.67
+    Achieved Occupancy                        %        31.73
+    Achieved Active Warps Per SM           warp        15.23
+    ------------------------------- ----------- ------------
+
+    OPT   Est. Local Speedup: 58.33%                                                                                    
+          The 5.00 theoretical warps per scheduler this kernel can issue according to its occupancy are below the       
+          hardware maximum of 12. This kernel's theoretical occupancy (41.7%) is limited by the number of required      
+          registers.                                                                                                    
+
+    Section: GPU and Memory Workload Distribution
+    -------------------------- ----------- ------------------
+    Metric Name                Metric Unit       Metric Value
+    -------------------------- ----------- ------------------
+    Average DRAM Active Cycles       cycle              5,132
+    Total DRAM Elapsed Cycles        cycle  2,344,505,661,440
+    Average L1 Active Cycles         cycle  42,622,885,547.38
+    Total L1 Elapsed Cycles          cycle  5,457,239,347,924
+    Average L2 Active Cycles         cycle       9,074,026.81
+    Total L2 Elapsed Cycles          cycle  1,359,762,905,592
+    Average SM Active Cycles         cycle  42,622,885,547.38
+    Total SM Elapsed Cycles          cycle  5,457,239,347,924
+    Average SMSP Active Cycles       cycle  42,279,170,369.98
+    Total SMSP Elapsed Cycles        cycle 21,828,957,391,696
+    -------------------------- ----------- ------------------
