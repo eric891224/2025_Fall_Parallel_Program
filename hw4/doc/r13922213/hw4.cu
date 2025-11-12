@@ -13,8 +13,8 @@
 
 #include "sha256.h"
 
-#define THREADS_PER_BLOCK 128
-#define BLOCKS_PER_GRID 512
+#define THREADS_PER_BLOCK 256
+#define BLOCKS_PER_GRID 2048
 
 typedef struct _block
 {
