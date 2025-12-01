@@ -4,10 +4,11 @@
             "name": "Linux",
             "includePath": [
                 "${workspaceFolder}/**",
-                "/usr/local/openmpi/include/"
+                "/usr/local/openmpi/include/",
+                "/opt/rocm/include/",
             ],
-            "defines": [],
-            "compilerPath": "/usr/bin/clang",
+            "defines": ["__HIP__", "__hcc__"],
+            "compilerPath": "/opt/rocm/bin/hipcc",
             "cStandard": "c17",
             "cppStandard": "c++14",
             "intelliSenseMode": "linux-clang-x64"

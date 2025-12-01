@@ -64,6 +64,11 @@
         "cinttypes": "cpp",
         "typeindex": "cpp",
         "typeinfo": "cpp",
-        "variant": "cpp"
-    }
+        "variant": "cpp",
+        "charconv": "cpp",
+        "format": "cpp",
+        "span": "cpp",
+        "future": "cpp"
+    },
+    "C_Cpp.default.compilerPath": "/usr/bin/g++"
 }
